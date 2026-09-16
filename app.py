@@ -1,13 +1,12 @@
+import io
 import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
 
-# Función para formatear números al estilo argentino (1.000.000,00)
 def formato_arg(numero):
     if pd.isna(numero) or numero == 0:
         return ""
-    # Formatea estilo US (1,000,000.00) y luego intercambia comas y puntos
     return f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # --- 🔒 SISTEMA DE LOGIN ---
@@ -39,12 +38,12 @@ with tab_carga:
     col1, col2, col3 = st.columns(3)
     with col1: file_fcp = st.file_uploader("Facturación", type=['xlsx'])
     with col2: file_nc = st.file_uploader("Notas de Crédito", type=['xlsx'])
-    with col3: file_historico = st.file_uploader("Histórico Base (NC2026 T1 v2)", type=['xlsx'])
+    with col3: file_historico = st.file_uploader("Histórico Base", type=['xlsx'])
     
     if st.button("Procesar y Generar Reporte"):
         if file_fcp and file_nc and file_historico:
             try:
-                # Leer archivos saltando encabezados (header=2)
+                # Leer archivos saltando los encabezados (header=2)
                 df_ventas = pd.read_excel(file_fcp, header=2)
                 df_nc = pd.read_excel(file_nc, header=2)
                 
@@ -84,9 +83,9 @@ with tab_carga:
                     '2026_porcentaje': '% NC (2026)'
                 })
 
-                # Guardar datos puros en sesión para usarlos en otras solapas
+                # Guardar datos en sesión
                 st.session_state['datos_2026'] = df_final.copy()
-                st.session_state['file_historico'] = file_historico.getvalue() # Guardamos el histórico en memoria
+                st.session_state['file_historico'] = file_historico.getvalue() 
 
                 # Aplicar formato visual
                 df_visual = df_final.copy()
@@ -107,15 +106,16 @@ with tab_comparativa:
     st.header("Comparativa Histórica (% NC sobre Venta)")
     if 'datos_2026' in st.session_state and 'file_historico' in st.session_state:
         try:
-            # Leemos el histórico desde la memoria de la sesión
-            xls_hist = pd.ExcelFile(st.session_state['file_historico'])
+            # SOLUCIÓN: Usamos io.BytesIO para convertir los bytes a un formato legible por Excel
+            archivo_memoria = io.BytesIO(st.session_state['file_historico'])
+            xls_hist = pd.ExcelFile(archivo_memoria)
+            
             df_comp = pd.DataFrame({"Mes": st.session_state['datos_2026']['Meses']})
             
-            # Extraer 2024 y 2025 asumiendo que están en las solapas homónimas 
-            # y que la columna se llama '% NC' (Ajusta esto si se llama diferente en tu Excel histórico)
+            # Extraer 2024 y 2025
             if '2024' in xls_hist.sheet_names:
                 d24 = pd.read_excel(xls_hist, sheet_name='2024')
-                df_comp['2024'] = d24.iloc[:12, 1] if len(d24.columns) > 1 else None # Toma la 2da columna de los primeros 12 meses
+                df_comp['2024'] = d24.iloc[:12, 1] if len(d24.columns) > 1 else None 
             if '2025' in xls_hist.sheet_names:
                 d25 = pd.read_excel(xls_hist, sheet_name='2025')
                 df_comp['2025'] = d25.iloc[:12, 1] if len(d25.columns) > 1 else None
@@ -124,6 +124,7 @@ with tab_comparativa:
             df_comp['2026'] = st.session_state['datos_2026']['% NC (2026)'].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else "")
             
             st.dataframe(df_comp)
+            
         except Exception as e:
             st.error(f"Error leyendo el histórico: {e}")
     else:
