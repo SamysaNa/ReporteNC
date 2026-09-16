@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import datetime
 
 # Configuración de la página web
 st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
@@ -40,16 +41,50 @@ with tab_carga:
     
     if st.button("Procesar y Generar Reporte"):
         if file_fcp and file_nc and file_historico:
-            st.success("¡Archivos cargados! (Listo para procesar la información).")
+            try:
+                # 1. Leer los archivos Excel
+                df_ventas = pd.read_excel(file_fcp)
+                df_nc = pd.read_excel(file_nc)
+                
+                # 2. Convertir los nombres de las columnas a minúsculas para evitar errores
+                df_ventas.columns = df_ventas.columns.str.lower().str.strip()
+                df_nc.columns = df_nc.columns.str.lower().str.strip()
+
+                # 3. FILTRO ANTI-DUPLICADOS (Por número de comprobante)
+                if 'numero de comprobante' in df_ventas.columns:
+                    df_ventas = df_ventas.drop_duplicates(subset=['numero de comprobante'], keep='first')
+                if 'numero de comprobante' in df_nc.columns:
+                    df_nc = df_nc.drop_duplicates(subset=['numero de comprobante'], keep='first')
+
+                # 4. Mostrar Resultados en Pantalla
+                st.success("¡Archivos procesados! El filtro anti-duplicados funcionó correctamente.")
+                
+                st.write("### Resumen de Facturación (Sin Duplicados)")
+                # Mostramos cuánto suma el total bruto de ventas
+                if 'total bruto' in df_ventas.columns:
+                    total_ventas = df_ventas['total bruto'].sum()
+                    st.metric(label="Suma Total Bruto (Ventas)", value=f"$ {total_ventas:,.2f}")
+                st.dataframe(df_ventas.head()) # Muestra las primeras 5 filas para comprobar
+
+                st.write("### Resumen de Notas de Crédito (Sin Duplicados)")
+                # Mostramos cuánto suma el total bruto de NC
+                if 'total bruto' in df_nc.columns:
+                    total_nc = df_nc['total bruto'].sum()
+                    st.metric(label="Suma Total Bruto (Notas de Crédito)", value=f"$ {total_nc:,.2f}")
+                st.dataframe(df_nc.head())
+
+            except Exception as e:
+                st.error(f"Hubo un error al procesar las columnas: {e}")
+                st.info("Asegúrate de que los Excel tengan una columna llamada 'numero de comprobante' y 'total bruto'.")
         else:
             st.warning("Por favor, sube los 3 archivos Excel para continuar.")
 
 with tab_comparativa:
     st.header("Comparativa Trimestre a Trimestre")
+    st.info("Aquí aparecerá el gráfico comparativo.")
 
 with tab_acumulado:
     st.header("Acumulado Anual")
-    
     if st.button("Cerrar Sesión"):
         st.session_state.autenticado = False
         st.rerun()
