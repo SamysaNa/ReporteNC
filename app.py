@@ -35,50 +35,58 @@ tab_carga, tab_comparativa, tab_acumulado = st.tabs([
 
 with tab_carga:
     st.header("1. Carga de Archivos del Trimestre")
-    file_fcp = st.file_uploader("Subir archivo de Facturación (ej. FCP2026T1.xlsx)", type=['xlsx'])
-    file_nc = st.file_uploader("Subir archivo de Notas de Crédito (ej. NC2026T1.xlsx)", type=['xlsx'])
-    file_historico = st.file_uploader("Subir archivo Histórico Base (ej. NC2026 T1 v2.xlsx)", type=['xlsx'])
+    file_fcp = st.file_uploader("Subir archivo de Facturación", type=['xlsx'])
+    file_nc = st.file_uploader("Subir archivo de Notas de Crédito", type=['xlsx'])
+    file_historico = st.file_uploader("Subir archivo Histórico Base", type=['xlsx'])
     
     if st.button("Procesar y Generar Reporte"):
         if file_fcp and file_nc and file_historico:
             try:
-                # 1. Leer los archivos Excel
                 df_ventas = pd.read_excel(file_fcp)
                 df_nc = pd.read_excel(file_nc)
                 
-                # 2. Convertir los nombres de las columnas a minúsculas para evitar errores
+                # Estandarizar columnas a minúsculas
                 df_ventas.columns = df_ventas.columns.str.lower().str.strip()
                 df_nc.columns = df_nc.columns.str.lower().str.strip()
 
-                # 3. FILTRO ANTI-DUPLICADOS (Por número de comprobante)
+                # Filtro Antiduplicados
                 if 'numero de comprobante' in df_ventas.columns:
                     df_ventas = df_ventas.drop_duplicates(subset=['numero de comprobante'], keep='first')
                 if 'numero de comprobante' in df_nc.columns:
                     df_nc = df_nc.drop_duplicates(subset=['numero de comprobante'], keep='first')
 
-                # 4. Mostrar Resultados en Pantalla
-                st.success("¡Archivos procesados! El filtro anti-duplicados funcionó correctamente.")
-                
-                st.write("### Resumen de Facturación (Sin Duplicados)")
-                # Mostramos cuánto suma el total bruto de ventas
-                if 'total bruto' in df_ventas.columns:
-                    total_ventas = df_ventas['total bruto'].sum()
-                    st.metric(label="Suma Total Bruto (Ventas)", value=f"$ {total_ventas:,.2f}")
-                st.dataframe(df_ventas.head()) # Muestra las primeras 5 filas para comprobar
+                # Verificar que exista la columna de fechas para extraer el mes
+                if 'fecha' in df_ventas.columns and 'fecha' in df_nc.columns:
+                    df_ventas['mes'] = pd.to_datetime(df_ventas['fecha']).dt.month
+                    df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
 
-                st.write("### Resumen de Notas de Crédito (Sin Duplicados)")
-                # Mostramos cuánto suma el total bruto de NC
-                if 'total bruto' in df_nc.columns:
-                    total_nc = df_nc['total bruto'].sum()
-                    st.metric(label="Suma Total Bruto (Notas de Crédito)", value=f"$ {total_nc:,.2f}")
-                st.dataframe(df_nc.head())
+                    # Agrupar sumando el total bruto por mes
+                    v_mes = df_ventas.groupby('mes')['total bruto'].sum().reset_index()
+                    nc_mes = df_nc.groupby('mes')['total bruto'].sum().reset_index()
+
+                    # Cruzar datos y calcular porcentaje
+                    calculo = pd.merge(v_mes, nc_mes, on='mes', how='left', suffixes=('_venta', '_nc'))
+                    calculo['total bruto_nc'] = calculo['total bruto_nc'].fillna(0)
+                    calculo['2026'] = (calculo['total bruto_nc'] / calculo['total bruto_venta'])
+
+                    # Armar estructura visual (Enero-Diciembre)
+                    meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+                    df_final = pd.DataFrame({"% NC SOBRE EL TOTAL DE LA VENTA": meses, "mes": range(1, 13)})
+                    df_final = pd.merge(df_final, calculo[['mes', '2026']], on='mes', how='left')
+
+                    # Formato visual de porcentaje
+                    df_final['2026'] = df_final['2026'].apply(lambda x: f"{x*100:.2f}%" if pd.notna(x) else "")
+
+                    st.success("Cálculos procesados correctamente.")
+                    st.dataframe(df_final[['% NC SOBRE EL TOTAL DE LA VENTA', '2026']])
+
+                else:
+                    st.error("No se encontró la columna 'fecha' en los Excel. El cálculo no puede realizarse.")
 
             except Exception as e:
-                st.error(f"Hubo un error al procesar las columnas: {e}")
-                st.info("Asegúrate de que los Excel tengan una columna llamada 'numero de comprobante' y 'total bruto'.")
+                st.error(f"Ocurrió un error al procesar la información: {e}")
         else:
-            st.warning("Por favor, sube los 3 archivos Excel para continuar.")
-
+            st.warning("Por favor sube los 3 archivos.")
 with tab_comparativa:
     st.header("Comparativa Trimestre a Trimestre")
     st.info("Aquí aparecerá el gráfico comparativo.")
