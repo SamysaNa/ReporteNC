@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import datetime
 
 # Configuración de la página web
 st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
@@ -29,6 +28,11 @@ if not st.session_state.autenticado:
 # --- 📊 APLICACIÓN PRINCIPAL ---
 st.title("📊 Generador de Reportes Trimestrales (NC)")
 
+# ESTA ES LA LÍNEA QUE FALTABA: Creamos las 3 solapas
+tab_carga, tab_comparativa, tab_acumulado = st.tabs([
+    "Carga de Archivos", "Comparativa Histórica", "Acumulado Anual"
+])
+
 with tab_carga:
     st.header("1. Carga de Archivos del Trimestre")
     file_fcp = st.file_uploader("Subir archivo de Facturación", type=['xlsx'])
@@ -42,11 +46,11 @@ with tab_carga:
                 df_ventas = pd.read_excel(file_fcp, header=2)
                 df_nc = pd.read_excel(file_nc, header=2)
                 
-                # Estandarizar columnas a minúsculas para evitar errores de mayúsculas
+                # Estandarizar columnas a minúsculas
                 df_ventas.columns = df_ventas.columns.str.lower().str.strip()
                 df_nc.columns = df_nc.columns.str.lower().str.strip()
 
-                # Nombres de tus columnas según la imagen
+                # Nombres de tus columnas según tu imagen
                 col_comprobante = 'número' 
                 col_monto = 'importe total origen'
                 col_fecha = 'fecha'
@@ -88,12 +92,13 @@ with tab_carga:
 
                 else:
                     st.error("Aún no encuentro la columna 'fecha'. Las columnas que veo son:")
-                    st.write(list(df_ventas.columns)) # Si falla, nos dirá exactamente qué ve
+                    st.write(list(df_ventas.columns)) 
 
             except Exception as e:
                 st.error(f"Ocurrió un error al procesar la información: {e}")
         else:
             st.warning("Por favor sube los 3 archivos.")
+
 with tab_comparativa:
     st.header("Comparativa Trimestre a Trimestre")
     st.info("Aquí aparecerá el gráfico comparativo.")
