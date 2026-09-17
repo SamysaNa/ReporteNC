@@ -41,9 +41,8 @@ with tab_carga:
     
     if st.button("Procesar y Generar Reporte"):
         if file_fcp and file_nc and file_historico:
-           try:
-                # 1. Lectura de archivos 
-                # (NOTA: Si tus títulos ahora están en la FILA 1 del Excel, cambia los tres "header=2" por "header=0")
+            try:
+                # 1. Lectura de archivos (saltando 2 filas de encabezado)
                 df_ventas = pd.read_excel(file_fcp, header=2)
                 df_nc = pd.read_excel(file_nc, header=2)
                 df_hist = pd.read_excel(file_historico, header=2)
@@ -70,10 +69,10 @@ with tab_carga:
                 if col_fecha not in df_ventas.columns: columnas_faltantes.append(col_fecha)
 
                 if columnas_faltantes:
-                    st.error(f"Faltan estas columnas en el Excel: {columnas_faltantes}")
+                    st.error(f"Faltan estas columnas en el Excel de facturación: {columnas_faltantes}")
                     st.warning(f"Las columnas que el sistema SÍ está leyendo son: {list(df_ventas.columns)}")
-                    st.info("💡 Si la lista de arriba muestra números o datos en lugar de tus títulos, cambia 'header=2' por 'header=0' en el código.")
-                    st.stop() # Detenemos el proceso acá para no tirar errores rojos raros
+                    st.info("💡 Si la lista de arriba muestra números en lugar de tus títulos, busca en el código 'header=2' y cámbialo por 'header=0'.")
+                    st.stop()
 
                 # 3. Antiduplicados
                 df_ventas = df_ventas.drop_duplicates(subset=[col_comprobante], keep='first')
@@ -102,19 +101,20 @@ with tab_carga:
 
             except Exception as e:
                 st.error(f"Error técnico procesando: {e}")
+        else:
+            st.warning("Sube los 3 archivos.")
 
 # --- LÓGICA DE SOLAPAS ---
 
 if 'datos_nc_2026' in st.session_state:
     df_nc = st.session_state['datos_nc_2026']
-    col_comprobante = 'número'
+    col_comprobante = 'numero'
     col_monto = 'importe total origen'
     
     with tab_comparativa:
         st.header("Comparativa Histórica")
         st.info("Aquí cruzaremos los porcentajes mensuales de 2025 (desde el archivo crudo) vs 2026.")
         
-        # Botón para guardar en Sheets (Simulado por ahora)
         if st.button("💾 Guardar Información en Google Sheets"):
             st.success("Los datos están listos para enviarse. Próximamente conectaremos la API de Google.")
 
