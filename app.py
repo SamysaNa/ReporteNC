@@ -41,41 +41,58 @@ with tab_carga:
     
     if st.button("Procesar y Generar Reporte"):
         if file_fcp and file_nc and file_historico:
-            try:
-                # 1. Lectura de archivos (saltando 2 filas de encabezado)
+           try:
+                # 1. Lectura de archivos 
+                # (NOTA: Si tus títulos ahora están en la FILA 1 del Excel, cambia los tres "header=2" por "header=0")
                 df_ventas = pd.read_excel(file_fcp, header=2)
                 df_nc = pd.read_excel(file_nc, header=2)
                 df_hist = pd.read_excel(file_historico, header=2)
                 
-                # Estandarizar columnas a minúsculas
+                # 2. Estandarizar columnas: minúsculas, sin espacios extra y quitamos las tildes
                 for df in [df_ventas, df_nc, df_hist]:
-                    df.columns = df.columns.str.lower().str.strip()
+                    df.columns = (df.columns.str.lower()
+                                  .str.strip()
+                                  .str.replace('ú', 'u')
+                                  .str.replace('í', 'i')
+                                  .str.replace('ó', 'o')
+                                  .str.replace('á', 'a')
+                                  .str.replace('é', 'e'))
 
-                col_comprobante = 'número' 
+                # Nombres "seguros" (sin tildes)
+                col_comprobante = 'numero' 
                 col_monto = 'importe total origen'
                 col_fecha = 'fecha'
+                col_tipo = 'tipo'
                 
-                # 2. Antiduplicados
-                if col_comprobante in df_ventas.columns:
-                    df_ventas = df_ventas.drop_duplicates(subset=[col_comprobante], keep='first')
-                    df_nc = df_nc.drop_duplicates(subset=[col_comprobante], keep='first')
-                    df_hist = df_hist.drop_duplicates(subset=[col_comprobante], keep='first')
+                # VERIFICACIÓN DE SEGURIDAD ANTES DE AVANZAR
+                columnas_faltantes = []
+                if col_comprobante not in df_ventas.columns: columnas_faltantes.append(col_comprobante)
+                if col_fecha not in df_ventas.columns: columnas_faltantes.append(col_fecha)
 
-                # 3. Procesar Histórico 2025 (Filtro fecha >= 01/01/2025)
+                if columnas_faltantes:
+                    st.error(f"Faltan estas columnas en el Excel: {columnas_faltantes}")
+                    st.warning(f"Las columnas que el sistema SÍ está leyendo son: {list(df_ventas.columns)}")
+                    st.info("💡 Si la lista de arriba muestra números o datos en lugar de tus títulos, cambia 'header=2' por 'header=0' en el código.")
+                    st.stop() # Detenemos el proceso acá para no tirar errores rojos raros
+
+                # 3. Antiduplicados
+                df_ventas = df_ventas.drop_duplicates(subset=[col_comprobante], keep='first')
+                df_nc = df_nc.drop_duplicates(subset=[col_comprobante], keep='first')
+                df_hist = df_hist.drop_duplicates(subset=[col_comprobante], keep='first')
+
+                # 4. Procesar Histórico 2025 (Filtro fecha >= 01/01/2025)
                 df_hist[col_fecha] = pd.to_datetime(df_hist[col_fecha], errors='coerce')
                 df_hist = df_hist[df_hist[col_fecha] >= '2025-01-01']
                 
-                # OJO: Asumimos que la columna 'tipo' o 'signo' define si es NC o Factura. 
-                # Por ahora, separamos las NC de 2025 buscando "NC" en el tipo de comprobante.
-                col_tipo = 'tipo' # AJUSTAR SI SE LLAMA DISTINTO
+                # Separar NC de Facturas en el histórico
                 if col_tipo in df_hist.columns:
                     df_hist_nc = df_hist[df_hist[col_tipo].astype(str).str.contains('NC', case=False, na=False)]
                     df_hist_ventas = df_hist[~df_hist[col_tipo].astype(str).str.contains('NC|ND', case=False, na=False)]
                 else:
-                    df_hist_nc = df_hist # Fallback temporal si no existe la columna
+                    df_hist_nc = df_hist 
                     df_hist_ventas = pd.DataFrame(columns=df_hist.columns)
 
-                # 4. Guardar datos puros en sesión para las demás solapas
+                # 5. Guardar datos puros en sesión para las demás solapas
                 st.session_state['datos_nc_2026'] = df_nc
                 st.session_state['datos_v_2026'] = df_ventas
                 st.session_state['datos_hist_nc'] = df_hist_nc
@@ -84,9 +101,7 @@ with tab_carga:
                 st.success("¡Cálculos procesados correctamente! Navega por las solapas para ver los resultados.")
 
             except Exception as e:
-                st.error(f"Error procesando: {e}")
-        else:
-            st.warning("Sube los 3 archivos.")
+                st.error(f"Error técnico procesando: {e}")
 
 # --- LÓGICA DE SOLAPAS ---
 
