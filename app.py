@@ -164,7 +164,8 @@ if 'd_nc26' in st.session_state:
         # Limpiar filas vacías (donde ni 2025 ni 2026 tienen datos)
         df_comp_vis = df_comp_vis[(df_comp_vis['% NC 2025'] != "-") | (df_comp_vis['% NC 2026'] != "-")]
         
-        st.dataframe(df_comp_vis.style.applymap(color_variacion, subset=['Variación Año/Año']), use_container_width=True)
+        # SOLUCIÓN APLICADA AQUÍ: Cambio applymap por map
+        st.dataframe(df_comp_vis.style.map(color_variacion, subset=['Variación Año/Año']), use_container_width=True)
         
         if st.button("💾 Guardar Información en Google Sheets"):
             st.success("API de Google pendiente de configuración.")
