@@ -8,13 +8,11 @@ st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
 # --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
 <style>
-/* Hacer las solapas más grandes y llamativas */
 .stTabs [data-baseweb="tab-list"] button [data-testid="stMarkdownContainer"] p {
     font-size: 1.25rem;
     font-weight: 800;
     color: #333;
 }
-/* Animaciones y tarjetas flotantes */
 @keyframes latido-rojo {
     0% { box-shadow: 0 0 10px rgba(255, 75, 75, 0.4); }
     50% { box-shadow: 0 0 25px rgba(255, 75, 75, 0.9); }
@@ -35,15 +33,9 @@ st.markdown("""
     transition: transform 0.2s ease;
 }
 .kpi-card:hover { transform: scale(1.02); }
-.kpi-rojo {
-    border: 4px solid #ff4b4b;
-    color: #ff4b4b;
-}
+.kpi-rojo { border: 4px solid #ff4b4b; color: #ff4b4b; }
 .kpi-rojo:hover { animation: latido-rojo 1.5s infinite; }
-.kpi-verde {
-    border: 4px solid #28a745;
-    color: #28a745;
-}
+.kpi-verde { border: 4px solid #28a745; color: #28a745; }
 .kpi-verde:hover { animation: latido-verde 1.5s infinite; }
 .kpi-titulo { font-size: 14px; font-weight: bold; color: #555; margin-bottom: 5px; }
 .kpi-valor { font-size: 24px; font-weight: 900; }
@@ -60,10 +52,14 @@ def tarjeta_kpi(titulo, valor, aumento=True):
     </div>
     """
 
+# Funciones de formato argentino
 def formato_arg(numero):
-    if pd.isna(numero) or numero == 0:
-        return "0,00"
+    if pd.isna(numero) or numero == 0: return "0,00"
     return f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def formato_pct(numero):
+    if pd.isna(numero) or numero == 0: return "0,00%"
+    return f"{numero*100:,.2f}%".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # --- 🔒 SISTEMA DE LOGIN CON ROLES ---
 PASS_ADMIN = "admin123"
@@ -84,7 +80,6 @@ if not st.session_state.rol:
             st.rerun()
         else:
             st.error("Contraseña incorrecta.")
-    st.info("Opciones de prueba: usa 'admin123' para cargar datos, o 'visor123' para modo lectura.")
     st.stop() 
 
 # --- 📊 APLICACIÓN PRINCIPAL ---
@@ -100,7 +95,6 @@ tab_analisis, tab_top10, tab_motivo, tab_error = st.tabs([
 
 # --- SOLAPA 1: ANÁLISIS ---
 with tab_analisis:
-    # Solo el admin ve la zona de carga
     if st.session_state.rol == "admin":
         with st.expander("📂 Zona de Carga de Archivos", expanded=True):
             col1, col2, col3 = st.columns(3)
@@ -178,13 +172,26 @@ with tab_analisis:
             df_m1['% s/Total NC'] = np.where(tot_nc_2026>0, df_m1['Monto NC/ND'] / tot_nc_2026, 0)
             df_m1['% s/Total Venta'] = np.where(df_m1['Total Venta']>0, df_m1['Monto NC/ND'] / df_m1['Total Venta'], 0)
             
+            # Diccionario de formatos visuales para la tabla
+            formatos_m1 = {
+                'Monto NC/ND': lambda x: f"$ {formato_arg(x)}",
+                'Total Venta': lambda x: f"$ {formato_arg(x)}",
+                '% s/Total NC': formato_pct,
+                '% s/Total Venta': formato_pct
+            }
+            
             c1, c2 = st.columns(2)
             with c1:
                 st.write("**Resumen NC**")
-                st.dataframe(df_m1[['Mes', 'Cantidad', 'Monto NC/ND', '% s/Total NC']].style.background_gradient(subset=['% s/Total NC'], cmap='Reds'))
+                # Aplicamos el degradado primero, y luego formateamos el texto a argentino
+                st.dataframe(df_m1[['Mes', 'Cantidad', 'Monto NC/ND', '% s/Total NC']].style
+                             .background_gradient(subset=['% s/Total NC'], cmap='Reds')
+                             .format(formatos_m1))
             with c2:
                 st.write("**Relación Venta vs NC**")
-                st.dataframe(df_m1[['Mes', 'Total Venta', 'Monto NC/ND', '% s/Total Venta']].style.background_gradient(subset=['% s/Total Venta'], cmap='Reds'))
+                st.dataframe(df_m1[['Mes', 'Total Venta', 'Monto NC/ND', '% s/Total Venta']].style
+                             .background_gradient(subset=['% s/Total Venta'], cmap='Reds')
+                             .format(formatos_m1))
 
         with mini2:
             st.write("### Días Hábiles (Editable)")
@@ -199,7 +206,8 @@ with tab_analisis:
             
             variacion_cant = d26['cantidad'].sum() - d25['cantidad'].sum()
             st.markdown(tarjeta_kpi("Variación de Cantidad (2026 vs 2025)", f"{variacion_cant:+.0f} NC", aumento=(variacion_cant>0)), unsafe_allow_html=True)
-            st.dataframe(df_m2)
+            
+            st.dataframe(df_m2.style.format({'NC por Día (2026)': lambda x: f"{x:,.2f}".replace('.', ',')}))
 
         with mini3:
             st.write("### Comparativa % NC sobre Total de Venta")
@@ -209,18 +217,22 @@ with tab_analisis:
             df_m3['Variación'] = df_m3['2026 (%)'] - df_m3['2025 (%)']
             
             def dar_color(val):
-                if val > 0: return 'color: red; font-weight: bold;'
-                elif val < 0: return 'color: green; font-weight: bold;'
+                if isinstance(val, (int, float)): # Solo evalúa si es un número real
+                    if val > 0: return 'color: red; font-weight: bold;'
+                    elif val < 0: return 'color: green; font-weight: bold;'
                 return ''
                 
-            vista_m3 = df_m3.copy()
-            for c in ['2025 (%)', '2026 (%)', 'Variación']:
-                vista_m3[c] = vista_m3[c].apply(lambda x: f"{x*100:.2f}%")
-                
-            st.dataframe(vista_m3.style.map(dar_color, subset=['Variación']), use_container_width=True)
+            formatos_m3 = {
+                '2025 (%)': formato_pct,
+                '2026 (%)': formato_pct,
+                'Variación': formato_pct
+            }
+            
+            # Pintamos los números reales y luego los convertimos en texto formateado
+            st.dataframe(df_m3.style.map(dar_color, subset=['Variación']).format(formatos_m3), use_container_width=True)
 
 # Lógica preexistente validada (reducida visualmente)
 if 'd_nc26' in st.session_state:
-    with tab_top10: st.write("✅ Datos listos")
-    with tab_motivo: st.write("✅ Datos listos")
-    with tab_error: st.write("✅ Datos listos")
+    with tab_top10: st.write("✅ Datos listos para gráficos Top 10")
+    with tab_motivo: st.write("✅ Datos listos para Motivos")
+    with tab_error: st.write("✅ Datos listos para Errores de Carga")
