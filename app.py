@@ -5,65 +5,66 @@ import altair as alt
 
 st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
 
-# --- ESTILOS CSS PERSONALIZADOS ---
+# --- ESTILOS CSS PERSONALIZADOS (MÁXIMA COMPACTACIÓN Y ALINEACIÓN) ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
 html, body, [class*="css"] { font-family: 'Nunito', sans-serif !important; }
 
-/* Solapas GIGANTES y en NEGRITA */
+/* Títulos de Solapas (Pestañas) - Gigantes y Negrita */
 button[role="tab"] {
     background-color: transparent !important;
     border: none !important;
     border-bottom: 5px solid transparent !important;
-    padding-bottom: 8px !important;
-    margin-right: 15px !important;
+    padding-bottom: 10px !important;
+    margin-right: 20px !important;
 }
 button[role="tab"] p {
-    font-size: 1.8rem !important; 
+    font-size: 2rem !important; 
     font-weight: 900 !important;
     color: #a0aec0 !important;
     transition: all 0.2s ease;
 }
 button[role="tab"][aria-selected="true"] { border-bottom: 5px solid #ff4b4b !important; }
-button[role="tab"][aria-selected="true"] p { color: #ff4b4b !important; font-size: 1.9rem !important; }
+button[role="tab"][aria-selected="true"] p { color: #ff4b4b !important; font-size: 2.1rem !important; }
 
-/* KPIs Compactos */
+/* Títulos de Secciones Internas */
+h2 { font-size: 2.5rem !important; font-weight: 900 !important; color: #1a202c !important; margin-top: 1rem !important; margin-bottom: 0.5rem !important; }
+
+/* KPIs (Tarjetas de Totales) - Más compactas */
 .kpi-card {
-    background-color: white; border-radius: 20px; padding: 10px 15px; margin: 5px 0;
-    text-align: center; transition: transform 0.2s ease;
+    background-color: white; border-radius: 15px; padding: 10px; margin: 5px 0;
+    text-align: center; border: 2px solid #e2e8f0;
 }
-.kpi-rojo { border: 2px solid #ff4b4b; color: #ff4b4b; background-color: rgba(255, 75, 75, 0.05); }
-.kpi-verde { border: 2px solid #28a745; color: #28a745; background-color: rgba(40, 167, 69, 0.05); }
+.kpi-rojo { border-color: #ff4b4b; color: #ff4b4b; background-color: rgba(255, 75, 75, 0.05); }
 .kpi-titulo { font-size: 13px; font-weight: 900; text-transform: uppercase; }
-.kpi-valor { font-size: 22px; font-weight: 900; }
+.kpi-valor { font-size: 24px; font-weight: 900; }
 
-/* Listas flotantes ALINEADAS */
+/* Filas Súper Compactas y Alineadas */
 .fila-canchera {
     display: flex; justify-content: space-between; align-items: center;
-    background: #ffffff; border-radius: 20px; padding: 4px 15px; margin-bottom: 6px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.03); border: 1px solid #f1f3f5;
+    background: #ffffff; border-radius: 8px; padding: 2px 10px; margin-bottom: 3px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02); border: 1px solid #edf2f7;
 }
-.fila-canchera:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.06); }
-.fila-titulo { font-weight: 800; color: #2d3748; font-size: 0.95rem; flex-grow: 1; }
-.fila-datos { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+.fila-canchera:hover { background: #f7fafc; border-color: #e2e8f0; }
+.fila-titulo { font-weight: 800; color: #2d3748; font-size: 0.85rem; flex-grow: 1; }
+.fila-datos { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
 
-/* Badges con Ancho Fijo para Alineación Perfecta */
+/* Badges con Ancho Fijo Estricto para Alineación Tabulada */
 .badge {
-    padding: 3px 10px; border-radius: 15px; font-weight: 800; font-size: 0.85rem; 
-    display: flex; align-items: center; justify-content: flex-end; gap: 5px;
-    min-width: 105px; text-align: right;
+    padding: 1px 8px; border-radius: 6px; font-weight: 800; font-size: 0.85rem; 
+    display: flex; align-items: center; justify-content: flex-end; gap: 4px;
+    min-width: 95px; text-align: right;
 }
-.badge-neutral { background: #edf2f7; color: #4a5568; }
-.badge-alerta { background: rgba(255, 75, 75, 0.15); color: #c53030; }
-.badge-ok { background: rgba(40, 167, 69, 0.15); color: #22543d; }
+.badge-neutral { background: transparent; color: #4a5568; }
+.badge-alerta { background: rgba(255, 75, 75, 0.12); color: #c53030; }
+.badge-ok { background: rgba(40, 167, 69, 0.12); color: #22543d; }
 </style>
 """, unsafe_allow_html=True)
 
 # --- FUNCIONES DE FORMATO ---
-def tarjeta_kpi(titulo, valor, aumento=True):
-    clase, icono = ("kpi-rojo", "🔴") if aumento else ("kpi-verde", "🟢")
-    return f"""<div class="kpi-card {clase}"><div class="kpi-titulo">{titulo}</div><div class="kpi-valor">{icono} {valor}</div></div>"""
+def tarjeta_kpi(titulo, valor):
+    return f"""<div class="kpi-card kpi-rojo"><div class="kpi-titulo">{titulo}</div><div class="kpi-valor">🔴 ⬆ {valor}</div></div>"""
 
 def formato_arg(numero):
     if pd.isna(numero) or numero == 0: return "0,00"
@@ -82,24 +83,28 @@ def render_lista(df, col_titulo, cols_datos):
             txt_val = ""
             clase_extra = "badge-neutral"
             
-            if 'Total' in c or 'Monto' in c: txt_val = f"$ {formato_arg(val)}"
-            elif '%' in c or 'Variación' in c:
+            # El orden importa: Primero buscamos % para evitar que se pise con "Total"
+            if '%' in c or 'Variación' in c:
                 txt_val = formato_pct(val)
                 if val > 0.05: clase_extra, txt_val = "badge-alerta", f"❌ {txt_val}"
                 elif val > 0: clase_extra, txt_val = "badge-alerta", f"🔴 {txt_val}"
                 elif val <= 0: clase_extra, txt_val = "badge-ok", f"✔️ {txt_val}"
-            elif 'Cantidad' in c or 'Cant' in c: txt_val = str(int(val))
-            else: txt_val = str(val)
+            elif 'Total' in c or 'Monto' in c: 
+                txt_val = f"$ {formato_arg(val)}"
+            elif 'Cantidad' in c or 'Cant' in c: 
+                txt_val = str(int(val))
+            else: 
+                txt_val = str(val)
 
             datos_html += f"<div class='badge {clase_extra}'>{txt_val}</div>"
         html += f"<div class='fila-canchera'><div class='fila-titulo'>{row[col_titulo]}</div><div class='fila-datos'>{datos_html}</div></div>"
     return html
 
 def grafico_gradiente(df, x_col, y_col):
-    return alt.Chart(df).mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5).encode(
+    return alt.Chart(df).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
         x=alt.X(x_col, sort='-y', title=''), y=alt.Y(y_col, title='Cantidad'),
         color=alt.Color(y_col, scale=alt.Scale(scheme='reds'), legend=None), tooltip=[x_col, y_col]
-    ).properties(height=220)
+    ).properties(height=200)
 
 # --- 🔒 LOGIN ---
 PASS_ADMIN = "admin123"
@@ -148,7 +153,6 @@ with tab_analisis:
                 except Exception as e: st.error(f"Error: {e}")
 
     if 'd_nc26' in st.session_state:
-        # Detectar el último mes con datos reales en 2026 para alinear la comparativa
         st.session_state['d_nc26']['mes'] = pd.to_datetime(st.session_state['d_nc26']['fecha']).dt.month
         max_mes = int(st.session_state['d_nc26']['mes'].max()) if not st.session_state['d_nc26'].empty else 12
         meses_completos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -169,12 +173,11 @@ with tab_analisis:
         d26 = calc_mensual(st.session_state['d_v26'], st.session_state['d_nc26'], max_mes)
         d25 = calc_mensual(st.session_state['d_v25'], st.session_state['d_nc25'], max_mes)
 
-        mini1, mini2, mini3 = st.columns(3)
-        st.markdown("<br>### 1. Métricas 2026", unsafe_allow_html=True)
+        st.markdown("## 2026", unsafe_allow_html=True)
         t_nc, t_c = d26['nc'].sum(), d26['cantidad'].sum()
         c_k1, c_k2 = st.columns(2)
-        with c_k1: st.markdown(tarjeta_kpi("Total NC Emitidas", int(t_c), True), unsafe_allow_html=True)
-        with c_k2: st.markdown(tarjeta_kpi("Monto Total NC", f"$ {formato_arg(t_nc)}", True), unsafe_allow_html=True)
+        with c_k1: st.markdown(tarjeta_kpi("Total NC Emitidas", int(t_c)), unsafe_allow_html=True)
+        with c_k2: st.markdown(tarjeta_kpi("Monto Total NC", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
 
         df_m1 = pd.DataFrame({'Mes': meses_activos, 'Cantidad': d26['cantidad'], 'Monto NC': d26['nc'], 'Total Venta': d26['ventas']})
         df_m1['% s/Total NC'] = np.where(t_nc!=0, df_m1['Monto NC'].abs() / abs(t_nc), 0)
@@ -184,14 +187,14 @@ with tab_analisis:
         with c1: st.markdown(render_lista(df_m1, 'Mes', ['Cantidad', 'Monto NC', '% s/Total NC']), unsafe_allow_html=True)
         with c2: st.markdown(render_lista(df_m1, 'Mes', ['Total Venta', 'Monto NC', '% s/Total Venta']), unsafe_allow_html=True)
 
-        st.markdown("### 2. Días Hábiles & Frecuencia")
+        st.markdown("## Días Hábiles & Frecuencia", unsafe_allow_html=True)
         df_m2 = pd.DataFrame({'Mes': meses_activos, 'Cant 2025': d25['cantidad'], 'Cant 2026': d26['cantidad']})
         dias_activos = st.session_state['dias_habiles'][:max_mes]
         df_m2['NC por Día'] = np.where(np.array(dias_activos)>0, df_m2['Cant 2026'] / np.array(dias_activos), 0)
         df_m2['NC por Día'] = df_m2['NC por Día'].apply(lambda x: f"{x:.2f}".replace('.',','))
         st.markdown(render_lista(df_m2, 'Mes', ['Cant 2025', 'Cant 2026', 'NC por Día']), unsafe_allow_html=True)
 
-        st.markdown("### 3. Comparativa % Venta Año a Año")
+        st.markdown("## Comparativa % Venta Año a Año", unsafe_allow_html=True)
         df_m3 = pd.DataFrame({'Mes': meses_activos})
         df_m3['2025 (%)'] = np.where(d25['ventas']!=0, d25['nc'].abs()/d25['ventas'].abs(), 0)
         df_m3['2026 (%)'] = np.where(d26['ventas']!=0, d26['nc'].abs()/d26['ventas'].abs(), 0)
@@ -201,16 +204,14 @@ with tab_analisis:
 # --- SOLAPAS DE ANÁLISIS (TRIMESTRE VS ACUMULADO) ---
 if 'd_nc26' in st.session_state:
     d_nc = st.session_state['d_nc26']
-    # Determinar el trimestre actual basado en el mes máximo
     trimestre_actual = (int(d_nc['mes'].max()) - 1) // 3 + 1 if not d_nc.empty else 1
     d_nc['trimestre'] = (d_nc['mes'] - 1) // 3 + 1
     d_nc_trim = d_nc[d_nc['trimestre'] == trimestre_actual]
 
     def armar_seccion_doble(df_trim, df_acum, col_agrupar, titulo):
-        st.markdown(f"## {titulo}")
+        st.markdown(f"## {titulo}", unsafe_allow_html=True)
         
-        # BLOQUE 1: TRIMESTRE ACTUAL
-        st.markdown(f"#### 📅 Trimestre Actual (Q{trimestre_actual})")
+        st.markdown(f"#### Trimestre Actual (Q{trimestre_actual})")
         if col_agrupar in df_trim.columns and not df_trim.empty:
             ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10)
             cA, cB = st.columns([1,1])
@@ -219,10 +220,7 @@ if 'd_nc26' in st.session_state:
         else:
             st.info("No hay datos para este trimestre.")
 
-        st.markdown("---")
-        
-        # BLOQUE 2: ACUMULADO ANUAL
-        st.markdown("#### 📈 Acumulado Anual 2026")
+        st.markdown("<br>#### Acumulado Anual 2026", unsafe_allow_html=True)
         if col_agrupar in df_acum.columns and not df_acum.empty:
             ag_acum = df_acum.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10)
             cC, cD = st.columns([1,1])
