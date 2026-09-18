@@ -9,7 +9,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
 
-# --- ESTILOS CSS REFORZADOS (GRILLA ESTRICTA) ---
+# --- ESTILOS CSS REFORZADOS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
@@ -31,7 +31,6 @@ h2 { font-size: 1.8rem !important; font-weight: 900 !important; color: #2d3748 !
 .celda-header-datos { flex: 1; display: flex; justify-content: flex-end; gap: 5px; }
 .celda-header-valor { width: 100px; text-align: right; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; padding-right: 5px;}
 
-/* Contenedores Flex estrictos para evitar colapso vertical */
 .fila-canchera, details.detalle-fila summary { display: flex; width: 100%; align-items: center; background: #ffffff; border-radius: 8px; padding: 4px 10px; margin-bottom: 5px; border: 1px solid #edf2f7; list-style: none; cursor: default;}
 details.detalle-fila summary { cursor: pointer; transition: transform 0.1s; }
 details.detalle-fila summary::-webkit-details-marker { display: none; }
@@ -57,7 +56,7 @@ details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e
 PALETA_COLORES = ['#ff1a1a', '#ff5555', '#ff7f50', '#ffa07a', '#ffb347', '#ffd700', '#d4e157', '#9ece6a', '#48c774', '#20b2aa']
 ID_DEL_SHEET = "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY"
 
-# --- FUNCIONES DE EXPORTACIÓN EXCEL FULL ---
+# --- EXPORTACIÓN EXCEL FULL CORREGIDA ---
 def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -67,15 +66,14 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     fmt_num = workbook.add_format({'border': 1, 'align': 'center'})
     fmt_plata = workbook.add_format({'num_format': '$ #,##0.00', 'border': 1})
     
-    # 1. Solapa Resumen
     ws_res = workbook.add_worksheet("Dashboard")
     ws_res.write(0, 0, "Dashboard NC 2026", fmt_titulo)
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     
     df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
     df_v['mes'] = pd.to_datetime(df_v['fecha']).dt.month
-    v_m = df_v.groupby('mes')['importe total origen'].sum().reset_index().rename(columns={'importe total origen': 'Ventas'})
-    nc_m = df_nc.groupby('mes')['importe total origen'].sum().reset_index().rename(columns={'importe total origen': 'Monto NC'})
+    v_m = df_v.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Ventas'})
+    nc_m = df_nc.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Monto NC'})
     nc_c = df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'Cantidad'})
     
     calc = pd.DataFrame({'Mes_Num': range(1, 13), 'Mes': meses})
@@ -92,12 +90,12 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
         ws_res.write(i+3, 3, row['Ventas'], fmt_plata)
         ws_res.write(i+3, 4, dias_habiles[i] if i < len(dias_habiles) else 20, fmt_num)
         
-    # Funciones de Solapas Analíticas
-    def agregar_hoja(nombre, col_agrupar, tipo_grafico):
-        if col_agrupar not in df_nc.columns: return
+    def agregar_hoja(nombre, col_agrupar, tipo_grafico, df_base):
+        if col_agrupar not in df_base.columns: return
         ws = workbook.add_worksheet(nombre)
         ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
-        ag = df_nc.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10)
+        # Aquí solucionamos el error: reset_index(drop=True) garantiza filas continuas en Excel
+        ag = df_base.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10).reset_index(drop=True)
         
         ws.write(2, 0, col_agrupar.upper(), fmt_header)
         ws.write(2, 1, "CANT", fmt_header)
@@ -116,36 +114,19 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
             'values':     [nombre, 3, 1, len(ag)+2, 1],
             'points':     [{'fill': {'color': c}} for c in PALETA_COLORES[:len(ag)]]
         })
-        chart.set_legend({'none': True}) if tipo_grafico != 'pie' else None
+        if tipo_grafico != 'pie': chart.set_legend({'none': True})
         ws.insert_chart('E3', chart)
 
-    agregar_hoja("Top 10 Clientes", "nombre cliente", "bar")
-    agregar_hoja("Motivos", "referencia 1", "pie")
-    
+    agregar_hoja("Top 10 Clientes", "nombre cliente", "bar", df_nc)
+    agregar_hoja("Motivos", "referencia 1", "pie", df_nc)
     df_err = df_nc[df_nc['referencia 1'].astype(str).str.contains('ERROR', case=False, na=False)] if 'referencia 1' in df_nc.columns else df_nc
-    if not df_err.empty:
-        ws_err = workbook.add_worksheet("Error Carga")
-        ws_err.write(0, 0, "Análisis: Error de Carga", fmt_titulo)
-        ag_e = df_err.groupby('cobrador cliente').agg(Cantidad=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10)
-        ws_err.write(2, 0, "COBRADOR", fmt_header); ws_err.write(2, 1, "CANT", fmt_header); ws_err.write(2, 2, "MONTO", fmt_header)
-        ws_err.set_column(0, 0, 30); ws_err.set_column(1, 2, 15)
-        for i, row in ag_e.iterrows():
-            ws_err.write(i+3, 0, row['cobrador cliente'], fmt_num)
-            ws_err.write(i+3, 1, row['Cantidad'], fmt_num)
-            ws_err.write(i+3, 2, row['Total'], fmt_plata)
-        chart_e = workbook.add_chart({'type': 'column'})
-        chart_e.add_series({
-            'categories': ["Error Carga", 3, 0, len(ag_e)+2, 0],
-            'values': ["Error Carga", 3, 1, len(ag_e)+2, 1],
-            'points': [{'fill': {'color': c}} for c in PALETA_COLORES[:len(ag_e)]]
-        })
-        chart_e.set_legend({'none': True})
-        ws_err.insert_chart('E3', chart_e)
+    if not df_err.empty: agregar_hoja("Error Carga", "cobrador cliente", "column", df_err)
 
     workbook.close()
     output.seek(0)
     return output
 
+# --- FUNCIONES DE GOOGLE SHEETS ---
 def conectar_google():
     if "gcp_service_account" not in st.secrets: return None, "Falta configurar credenciales."
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -221,7 +202,7 @@ def render_lista(df_agrupado, df_crudo, col_titulo, cols_datos, ranking=False, d
             html += "<div class='detalle-contenido'><table class='tabla-interna'><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Monto Bruto</th></tr>"
             for _, det_row in df_det.iterrows():
                 f_str = det_row['fecha'].strftime('%d/%m/%Y') if pd.notnull(det_row['fecha']) else ''
-                html += f"<tr><td>{f_str}</td><td>{det_row.get('numero', '')}</td><td>{det_row.get('nombre cliente', '')}</td><td>$ {formato_arg(det_row.get('importe total origen', 0))}</td></tr>"
+                html += f"<tr><td>{f_str}</td><td>{det_row.get('numero', '')}</td><td>{det_row.get('nombre cliente', '')}</td><td>$ {formato_arg(det_row.get('total bruto origen', 0))}</td></tr>"
             html += "</table></div></details>"
         else: html += "</div></div>"
     html += "</div>"
@@ -318,8 +299,8 @@ with tab_analisis:
 
         def calc_m(df_v, df_nc, max_m):
             c = pd.DataFrame({'mes': range(1, max_m+1)})
-            c = c.merge(df_v.groupby('mes')['importe total origen'].sum().reset_index(), on='mes', how='left').rename(columns={'importe total origen': 'ventas'})
-            c = c.merge(df_nc.groupby('mes')['importe total origen'].sum().reset_index(), on='mes', how='left').rename(columns={'importe total origen': 'nc'})
+            c = c.merge(df_v.groupby('mes')['total bruto origen'].sum().reset_index(), on='mes', how='left').rename(columns={'total bruto origen': 'ventas'})
+            c = c.merge(df_nc.groupby('mes')['total bruto origen'].sum().reset_index(), on='mes', how='left').rename(columns={'total bruto origen': 'nc'})
             c = c.merge(df_nc.groupby('mes')['numero'].count().reset_index(), on='mes', how='left').rename(columns={'numero': 'cantidad'})
             return c.fillna(0)
             
@@ -328,11 +309,11 @@ with tab_analisis:
         st.markdown("<h1 style='font-size: 3.5rem; font-weight: 900; color: #1a202c; margin-top: 10px; margin-bottom: 10px;'>2026</h1>", unsafe_allow_html=True)
         
         if filtro_tiempo != "Todo el Año":
-            t_nc, t_c = st.session_state['d_nc26']['importe total origen'].sum(), st.session_state['d_nc26']['numero'].count()
+            t_nc, t_c = st.session_state['d_nc26']['total bruto origen'].sum(), st.session_state['d_nc26']['numero'].count()
             k1, k2, k3 = st.columns([1, 1, 2])
             with k1: st.markdown(tarjeta_kpi(f"NC Emitidas ({filtro_tiempo})", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi(f"Monto Total ({filtro_tiempo})", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
-            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado del Top 10 Clientes, Motivos y Errores aplicando este filtro de tiempo. (El Dashboard principal muestra el panorama Anual general).")
+            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado aplicando este filtro de tiempo. (El Dashboard principal muestra el panorama Anual general).")
         else:
             t_nc, t_c = d26_calc['nc'].sum(), d26_calc['cantidad'].sum()
             k1, k2, k3 = st.columns([1, 1, 2])
@@ -397,7 +378,7 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
             
             st.markdown(f"<h2>📅 Trimestre Actual (Q{int(t_actual)})</h2>", unsafe_allow_html=True)
             if col_agrupar in df_trim.columns and not df_trim.empty:
-                ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
                 ag_trim['Color'] = PALETA_COLORES[:len(ag_trim)]
                 cA, cB = st.columns([1.1, 1.3])
                 with cA: st.markdown(render_lista(ag_trim, df_trim, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
@@ -409,7 +390,7 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
 
             st.markdown("<br><h2>📈 Acumulado Anual 2026</h2>", unsafe_allow_html=True)
             if col_agrupar in df_crudo.columns and not df_crudo.empty:
-                ag_acum = df_crudo.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                ag_acum = df_crudo.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
                 ag_acum['Color'] = PALETA_COLORES[:len(ag_acum)]
                 cC, cD = st.columns([1.1, 1.3])
                 with cC: st.markdown(render_lista(ag_acum, df_crudo, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
@@ -421,7 +402,7 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
             df_filtrado = filtrar_df(df_crudo, filtro_tiempo)
             st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo} - {filtro_tiempo}</h2>", unsafe_allow_html=True)
             if col_agrupar in df_filtrado.columns and not df_filtrado.empty:
-                ag_data = df_filtrado.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                ag_data = df_filtrado.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
                 ag_data['Color'] = PALETA_COLORES[:len(ag_data)]
                 cA, cB = st.columns([1.1, 1.3])
                 with cA: st.markdown(render_lista(ag_data, df_filtrado, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
