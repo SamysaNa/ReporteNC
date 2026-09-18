@@ -2,10 +2,14 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+import io
+import xlsxwriter
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
 
-# --- ESTILOS CSS PERSONALIZADOS (ALINEACIÓN PERFECTA Y COLORES NEÓN) ---
+# --- ESTILOS CSS PERSONALIZADOS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
@@ -44,9 +48,84 @@ h2 { font-size: 1.8rem !important; font-weight: 900 !important; color: #2d3748 !
 </style>
 """, unsafe_allow_html=True)
 
-# --- PALETA DE COLORES SINCRONIZADA ---
 PALETA_COLORES = ['#ff1a1a', '#ff5555', '#ff7f50', '#ffa07a', '#ffb347', '#ffd700', '#d4e157', '#9ece6a', '#48c774', '#20b2aa']
 
+# --- FUNCIONES DE EXPORTACIÓN Y GOOGLE SHEETS ---
+def generar_excel_formateado(diccionario_dfs):
+    output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    
+    # Definición de formatos visuales para Excel
+    formato_header = workbook.add_format({'bold': True, 'bg_color': '#2d3748', 'font_color': 'white', 'border': 1})
+    formato_plata = workbook.add_format({'num_format': '$ #,##0.00', 'border': 1})
+    formato_pct = workbook.add_format({'num_format': '0.00%', 'border': 1})
+    formato_alerta = workbook.add_format({'bg_color': '#fed7d7', 'font_color': '#c53030', 'num_format': '0.00%', 'border': 1})
+    formato_ok = workbook.add_format({'bg_color': '#c6f6d5', 'font_color': '#22543d', 'num_format': '0.00%', 'border': 1})
+    formato_normal = workbook.add_format({'border': 1})
+
+    for nombre_hoja, df in diccionario_dfs.items():
+        worksheet = workbook.add_worksheet(nombre_hoja)
+        # Escribir encabezados
+        for col_num, value in enumerate(df.columns.values):
+            worksheet.write(0, col_num, value, formato_header)
+            worksheet.set_column(col_num, col_num, 18) # Ajustar ancho de columnas
+
+        # Escribir datos con lógica de color
+        for row_num, row_data in enumerate(df.values):
+            for col_num, value in enumerate(row_data):
+                col_name = df.columns[col_num]
+                
+                if pd.isna(value):
+                    worksheet.write(row_num + 1, col_num, "", formato_normal)
+                    continue
+                    
+                if 'Total' in col_name or 'Monto' in col_name:
+                    worksheet.write_number(row_num + 1, col_num, float(value), formato_plata)
+                elif '%' in col_name or 'Variación' in col_name or 'SOBRE VENTA' in col_name:
+                    val_pct = float(value)
+                    # Aplicar formato de color si supera los umbrales de alerta
+                    if val_pct > 0.05:
+                        worksheet.write_number(row_num + 1, col_num, val_pct, formato_alerta)
+                    elif val_pct <= 0:
+                        worksheet.write_number(row_num + 1, col_num, val_pct, formato_ok)
+                    else:
+                        worksheet.write_number(row_num + 1, col_num, val_pct, formato_pct)
+                else:
+                    worksheet.write(row_num + 1, col_num, value, formato_normal)
+
+    workbook.close()
+    output.seek(0)
+    return output
+
+def guardar_en_sheets(df, nombre_hoja):
+    # Esta función requiere configurar st.secrets["gcp_service_account"]
+    try:
+        if "gcp_service_account" not in st.secrets:
+            return False, "Falta configurar las credenciales de Google (secrets) en Streamlit Cloud."
+            
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
+        client = gspread.authorize(creds)
+        
+        # Necesitas poner el ID de tu Google Sheet aquí (la parte larga de la URL de tu sheet)
+        ID_DEL_SHEET = "REEMPLAZAR_CON_TU_ID_DE_SHEET" 
+        if ID_DEL_SHEET == "REEMPLAZAR_CON_TU_ID_DE_SHEET":
+            return False, "Falta configurar el ID_DEL_SHEET en el código."
+
+        sheet = client.open_by_key(ID_DEL_SHEET)
+        
+        try:
+            worksheet = sheet.worksheet(nombre_hoja)
+            worksheet.clear()
+        except gspread.exceptions.WorksheetNotFound:
+            worksheet = sheet.add_worksheet(title=nombre_hoja, rows="100", cols="20")
+            
+        worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+        return True, f"Datos guardados exitosamente en la pestaña '{nombre_hoja}'."
+    except Exception as e:
+        return False, str(e)
+
+# --- FUNCIONES DE FORMATO Y RENDERIZADO VISUAL ---
 def tarjeta_kpi(titulo, valor):
     return f"""<div class="kpi-card kpi-rojo"><div class="kpi-titulo">{titulo}</div><div class="kpi-valor">🔴 ⬆ {valor}</div></div>"""
 
@@ -128,6 +207,48 @@ if not st.session_state.rol:
         else: st.error("Clave incorrecta.")
     st.stop() 
 
+# --- PANEL LATERAL: EXPORTACIÓN (Solo Admin) ---
+if st.session_state.rol == "admin":
+    with st.sidebar:
+        st.header("💾 Exportar y Guardar")
+        if 'd_nc26' in st.session_state:
+            st.success("Datos listos para exportar")
+            
+            # Preparar los DataFrames que queremos exportar
+            df_nc = st.session_state['d_nc26']
+            top_clientes = df_nc.groupby('nombre cliente').agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False)
+            top_motivos = df_nc.groupby('referencia 1').agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False)
+            
+            diccionario_exportar = {
+                "Data Cruda 2026": df_nc,
+                "Top Clientes": top_clientes,
+                "Motivos NC": top_motivos
+            }
+            
+            # Botón Descargar Excel
+            excel_data = generar_excel_formateado(diccionario_exportar)
+            st.download_button(
+                label="📥 Descargar Reporte en Excel",
+                data=excel_data,
+                file_name="Reporte_NC_Format.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+            
+            # Botón Guardar Sheets
+            st.markdown("---")
+            if st.button("☁️ Sincronizar con Google Sheets"):
+                with st.spinner("Conectando con Google..."):
+                    exito, mensaje = guardar_en_sheets(top_clientes, "Top Clientes")
+                    if exito:
+                        st.success(mensaje)
+                    else:
+                        st.error(mensaje)
+        else:
+            st.warning("Procesa los archivos primero para habilitar la exportación.")
+        
+        st.markdown("---")
+        if st.button("Cerrar Sesión"): st.session_state.rol = None; st.rerun()
+
 # --- 📊 APLICACIÓN PRINCIPAL ---
 st.title("📊 Análisis de Reportes NC")
 tab_analisis, tab_top10, tab_motivo, tab_error = st.tabs(["Dashboard", "Top 10 Clientes", "Motivos", "Error Carga"])
@@ -171,7 +292,6 @@ with tab_analisis:
 
         st.markdown("<h1 style='font-size: 3.5rem; font-weight: 900; color: #1a202c; margin-top: 10px; margin-bottom: 10px;'>2026</h1>", unsafe_allow_html=True)
         
-        # BLOQUE SUPERIOR (KPIs + RESUMEN ANUAL HISTÓRICO)
         t_nc, t_c = d26['nc'].sum(), d26['cantidad'].sum()
         k1, k2, k3 = st.columns([1, 1, 2])
         with k1: st.markdown(tarjeta_kpi("Total NC Emitidas", int(t_c)), unsafe_allow_html=True)
@@ -187,7 +307,6 @@ with tab_analisis:
             })
             st.markdown(render_lista(df_hist_anual, 'AÑO', ['CANTIDAD', 'EN MILLONES', '% SOBRE VENTA']), unsafe_allow_html=True)
 
-        # BLOQUE MEDIO (RESUMEN MENSUAL)
         df_m1 = pd.DataFrame({'Mes': meses_activos, 'Cantidad': d26['cantidad'], 'Monto NC': d26['nc'], 'Total Venta': d26['ventas']})
         df_m1['% s/Total NC'] = np.where(t_nc!=0, df_m1['Monto NC'].abs() / abs(t_nc), 0)
         df_m1['% s/Total Venta'] = np.where(df_m1['Total Venta']!=0, df_m1['Monto NC'].abs() / df_m1['Total Venta'].abs(), 0)
@@ -199,7 +318,6 @@ with tab_analisis:
             st.markdown("<h2>Relación Venta vs NC</h2>", unsafe_allow_html=True)
             st.markdown(render_lista(df_m1, 'Mes', ['Total Venta', 'Monto NC', '% s/Total Venta']), unsafe_allow_html=True)
 
-        # BLOQUE INFERIOR ALINEADO (DÍAS HÁBILES Y COMPARATIVA)
         c3, c4 = st.columns(2)
         with c3:
             st.markdown("<h2>Días Hábiles & Frecuencia</h2>", unsafe_allow_html=True)
@@ -214,7 +332,6 @@ with tab_analisis:
             df_m3['Variación'] = df_m3['2026 (%)'] - df_m3['2025 (%)']
             st.markdown(render_lista(df_m3, 'Mes', ['2025 (%)', '2026 (%)', 'Variación']), unsafe_allow_html=True)
 
-        # GRÁFICO TRIMESTRAL HISTÓRICO
         st.markdown("<br><h2>Evolución Trimestral (24-25-26)</h2>", unsafe_allow_html=True)
         cant_24_full = [48, 27, 18, 28, 29, 13, 23, 19, 19, 30, 45, 59]
         d25_full = calc_m(st.session_state['d_v25'], st.session_state['d_nc25'], 12)
@@ -247,7 +364,6 @@ if 'd_nc26' in st.session_state:
 
         st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo}</h2>", unsafe_allow_html=True)
         
-        # Bloque Trimestre
         st.markdown(f"<h2>📅 Trimestre Actual (Q{trimestre_actual})</h2>", unsafe_allow_html=True)
         if col_agrupar in df_trim.columns and not df_trim.empty:
             ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
@@ -260,7 +376,6 @@ if 'd_nc26' in st.session_state:
                 else: st.altair_chart(grafico_barras_v(ag_trim, col_agrupar, 'Cant'), use_container_width=True)
         else: st.info("No hay datos para este trimestre.")
 
-        # Bloque Acumulado
         st.markdown("<br><h2>📈 Acumulado Anual 2026</h2>", unsafe_allow_html=True)
         if col_agrupar in df_acum.columns and not df_acum.empty:
             ag_acum = df_acum.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
