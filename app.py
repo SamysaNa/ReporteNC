@@ -7,7 +7,7 @@ import xlsxwriter
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
+st.set_page_config(page_title="Reporte NC Mundi SA", layout="wide")
 
 # --- ESTILOS CSS REFORZADOS ---
 st.markdown("""
@@ -27,7 +27,7 @@ h2 { font-size: 1.8rem !important; font-weight: 900 !important; color: #2d3748 !
 
 .tabla-canchera { width: 100%; display: flex; flex-direction: column; margin-bottom: 20px; }
 .fila-header { display: flex; width: 100%; border-bottom: 2px solid #edf2f7; padding: 2px 10px; margin-bottom: 4px; }
-.celda-header-titulo { flex: 0 0 140px; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; text-align: left; }
+.celda-header-titulo { flex: 0 0 160px; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; text-align: left; }
 .celda-header-datos { flex: 1; display: flex; justify-content: flex-end; gap: 5px; }
 .celda-header-valor { width: 100px; text-align: right; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; padding-right: 5px;}
 
@@ -37,7 +37,7 @@ details.detalle-fila summary::-webkit-details-marker { display: none; }
 details.detalle-fila summary:hover { transform: scale(1.01); background: #f8fafc; }
 details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e2e8f0 !important; }
 
-.celda-titulo { flex: 0 0 140px; font-weight: 800; color: #2d3748; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; display: flex; align-items: center; gap: 5px;}
+.celda-titulo { flex: 0 0 160px; font-weight: 800; color: #2d3748; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; display: flex; align-items: center; gap: 5px;}
 .celda-datos-container { flex: 1; display: flex; justify-content: flex-end; gap: 5px; align-items: center;}
 
 .badge { width: 100px; padding: 2px 6px; border-radius: 6px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: flex-end; gap: 4px; text-align: right; white-space: nowrap;}
@@ -56,7 +56,7 @@ details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e
 PALETA_COLORES = ['#ff1a1a', '#ff5555', '#ff7f50', '#ffa07a', '#ffb347', '#ffd700', '#d4e157', '#9ece6a', '#48c774', '#20b2aa']
 ID_DEL_SHEET = "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY"
 
-# --- EXPORTACIÓN EXCEL FULL CORREGIDA ---
+# --- EXPORTACIÓN EXCEL FULL ---
 def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -94,7 +94,6 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
         if col_agrupar not in df_base.columns: return
         ws = workbook.add_worksheet(nombre)
         ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
-        # Aquí solucionamos el error: reset_index(drop=True) garantiza filas continuas en Excel
         ag = df_base.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10).reset_index(drop=True)
         
         ws.write(2, 0, col_agrupar.upper(), fmt_header)
@@ -126,7 +125,6 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     output.seek(0)
     return output
 
-# --- FUNCIONES DE GOOGLE SHEETS ---
 def conectar_google():
     if "gcp_service_account" not in st.secrets: return None, "Falta configurar credenciales."
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -268,7 +266,7 @@ if 'd_nc26_raw' in st.session_state:
     for k in ['d_nc26', 'd_v26', 'd_nc25', 'd_v25']: st.session_state[k] = filtrar_df(st.session_state[f'{k}_raw'], filtro_tiempo)
 
 # --- 📊 DASHBOARD PRINCIPAL ---
-st.title(f"📊 Análisis de Reportes NC - {filtro_tiempo}")
+st.title(f"📊 Reporte NC Mundi SA - {filtro_tiempo}")
 tab_analisis, tab_top10, tab_motivo, tab_error = st.tabs(["Dashboard", "Top 10 Clientes", "Motivos", "Error Carga"])
 
 with tab_analisis:
@@ -285,8 +283,13 @@ with tab_analisis:
                     df_v, df_n, df_h = df_v.drop_duplicates(subset=['numero']), df_n.drop_duplicates(subset=['numero']), df_h.drop_duplicates(subset=['numero'])
                     df_h['fecha'] = pd.to_datetime(df_h['fecha'], errors='coerce')
                     df_h = df_h[df_h['fecha'] >= '2025-01-01']
-                    df_h_nc = df_h[df_h['tipo'].astype(str).str.contains('NC', case=False, na=False)] if 'tipo' in df_h.columns else df_h
-                    df_h_v = df_h[~df_h['tipo'].astype(str).str.contains('NC|ND', case=False, na=False)] if 'tipo' in df_h.columns else pd.DataFrame(columns=df_h.columns)
+                    # Filtro estricto 2025: contar todo menos las facturas
+                    if 'tipo' in df_h.columns:
+                        df_h_nc = df_h[~df_h['tipo'].astype(str).str.contains('FAC|FACTURA', case=False, na=False)]
+                        df_h_v = df_h[df_h['tipo'].astype(str).str.contains('FAC|FACTURA', case=False, na=False)]
+                    else:
+                        df_h_nc, df_h_v = df_h, pd.DataFrame(columns=df_h.columns)
+                    
                     st.session_state['d_nc26_raw'], st.session_state['d_v26_raw'], st.session_state['d_nc25_raw'], st.session_state['d_v25_raw'] = df_n, df_v, df_h_nc, df_h_v
                     for key in ['d_nc26_raw', 'd_v26_raw', 'd_nc25_raw', 'd_v25_raw']: st.session_state[key]['fecha'] = pd.to_datetime(st.session_state[key]['fecha'], errors='coerce'); st.session_state[key]['mes'] = st.session_state[key]['fecha'].dt.month; st.session_state[key]['trimestre'] = (st.session_state[key]['mes'] - 1) // 3 + 1
                     st.rerun()
@@ -294,6 +297,8 @@ with tab_analisis:
     if 'd_nc26' in st.session_state and not st.session_state['d_nc26_raw'].empty:
         d26_raw, d25_raw = st.session_state['d_nc26_raw'], st.session_state['d_nc25_raw']
         v26_raw, v25_raw = st.session_state['d_v26_raw'], st.session_state['d_v25_raw']
+        
+        # Calcular el último mes con datos cargados para determinar el rótulo parcial
         max_mes = int(d26_raw['mes'].max()) if not d26_raw.empty else 12
         meses_activos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][:max_mes]
 
@@ -322,8 +327,8 @@ with tab_analisis:
             with k3:
                 v_26_mill = (d26_calc['ventas'].sum() / 1000000) if d26_calc['ventas'].sum() != 0 else 0
                 pct_26 = (t_nc / d26_calc['ventas'].sum()) if d26_calc['ventas'].sum() != 0 else 0
-                df_hist_anual = pd.DataFrame({'AÑO': ['2023', '2024', '2025', '2026 (Parcial)'], 'CANTIDAD': [336, 358, 342, int(t_c)], 'EN MILLONES': ["76.000", "218.000", "338.000", f"{v_26_mill:,.3f}".replace(',', '.')], '% SOBRE VENTA': [0.0486, 0.0438, 0.0548, pct_26]})
-                st.markdown(render_lista(df_hist_anual, st.session_state['d_nc26_raw'], 'AÑO', ['CANTIDAD', 'EN MILLONES', '% SOBRE VENTA']), unsafe_allow_html=True)
+                df_hist_anual = pd.DataFrame({'COMPARATIVA ANUAL': ['2023', '2024', '2025', '2026 (Parcial)'], 'CANTIDAD': [336, 358, 342, int(t_c)], 'EN MILLONES': ["76.000", "218.000", "338.000", f"{v_26_mill:,.3f}".replace(',', '.')], '% SOBRE VENTA': [0.0486, 0.0438, 0.0548, pct_26]})
+                st.markdown(render_lista(df_hist_anual, st.session_state['d_nc26_raw'], 'COMPARATIVA ANUAL', ['CANTIDAD', 'EN MILLONES', '% SOBRE VENTA']), unsafe_allow_html=True)
 
         df_m1 = pd.DataFrame({'Mes': meses_activos, 'Cantidad': d26_calc['cantidad'], 'Monto NC': d26_calc['nc'], 'Total Venta': d26_calc['ventas']})
         df_m1['% s/Total NC'] = np.where(d26_calc['nc'].sum()!=0, df_m1['Monto NC'].abs() / abs(d26_calc['nc'].sum()), 0)
