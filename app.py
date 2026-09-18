@@ -56,7 +56,7 @@ details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e
 PALETA_COLORES = ['#ff1a1a', '#ff5555', '#ff7f50', '#ffa07a', '#ffb347', '#ffd700', '#d4e157', '#9ece6a', '#48c774', '#20b2aa']
 ID_DEL_SHEET = "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY"
 
-# --- EXPORTACIÓN EXCEL FULL (INCLUYE SOLAPA RESUMEN) ---
+# --- EXPORTACIÓN EXCEL FULL (CON SOLAPA RESUMEN GRÁFICA) ---
 def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -66,7 +66,7 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     fmt_num = workbook.add_format({'border': 1, 'align': 'center'})
     fmt_plata = workbook.add_format({'num_format': '$ #,##0.00', 'border': 1})
     
-    # 1. Solapa Resumen
+    # Solapa Resumen
     ws_res = workbook.add_worksheet("Resumen")
     ws_res.write(0, 0, "Resumen NC 2026", fmt_titulo)
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -74,13 +74,16 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     if not df_nc.empty and 'fecha' in df_nc.columns:
         df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
         df_v['mes'] = pd.to_datetime(df_v['fecha']).dt.month
+        
+        # Filtros con valores absolutos para Excel
+        df_nc_abs = df_nc.copy()
+        if 'total bruto origen' in df_nc_abs.columns: df_nc_abs['total bruto origen'] = df_nc_abs['total bruto origen'].abs()
+        
         v_m = df_v.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Ventas'})
-        nc_m = df_nc.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Monto NC'})
+        nc_m = df_nc_abs.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Monto NC'})
         nc_c = df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'Cantidad'})
     else:
-        v_m = pd.DataFrame(columns=['mes', 'Ventas'])
-        nc_m = pd.DataFrame(columns=['mes', 'Monto NC'])
-        nc_c = pd.DataFrame(columns=['mes', 'Cantidad'])
+        v_m, nc_m, nc_c = pd.DataFrame(columns=['mes', 'Ventas']), pd.DataFrame(columns=['mes', 'Monto NC']), pd.DataFrame(columns=['mes', 'Cantidad'])
     
     calc = pd.DataFrame({'Mes_Num': range(1, 13), 'Mes': meses})
     calc = calc.merge(v_m, left_on='Mes_Num', right_on='mes', how='left').merge(nc_m, left_on='Mes_Num', right_on='mes', how='left').merge(nc_c, left_on='Mes_Num', right_on='mes', how='left').fillna(0)
@@ -96,11 +99,21 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
         ws_res.write(i+3, 3, row['Ventas'], fmt_plata)
         ws_res.write(i+3, 4, dias_habiles[i] if i < len(dias_habiles) else 20, fmt_num)
         
+    # Gráfico para Resumen en Excel
+    chart_res = workbook.add_chart({'type': 'column'})
+    chart_res.add_series({'name': 'Ventas', 'categories': ['Resumen', 3, 0, 14, 0], 'values': ['Resumen', 3, 3, 14, 3], 'fill': {'color': '#4bc0c0'}})
+    chart_res.add_series({'name': 'Monto NC', 'categories': ['Resumen', 3, 0, 14, 0], 'values': ['Resumen', 3, 2, 14, 2], 'fill': {'color': '#ff4b4b'}})
+    chart_res.set_title({'name': 'Comparativa Mensual (Ventas vs NC)'})
+    ws_res.insert_chart('G3', chart_res)
+        
     def agregar_hoja(nombre, col_agrupar, tipo_grafico, df_base):
         if df_base.empty or col_agrupar not in df_base.columns: return
         ws = workbook.add_worksheet(nombre)
         ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
-        ag = df_base.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10).reset_index(drop=True)
+        
+        df_abs = df_base.copy()
+        if 'total bruto origen' in df_abs.columns: df_abs['total bruto origen'] = df_abs['total bruto origen'].abs()
+        ag = df_abs.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10).reset_index(drop=True)
         
         ws.write(2, 0, col_agrupar.upper(), fmt_header)
         ws.write(2, 1, "CANT", fmt_header)
@@ -207,7 +220,7 @@ def render_lista(df_agrupado, df_crudo, col_titulo, cols_datos, ranking=False, d
             html += "<div class='detalle-contenido'><table class='tabla-interna'><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Monto Bruto</th></tr>"
             for _, det_row in df_det.iterrows():
                 f_str = det_row['fecha'].strftime('%d/%m/%Y') if pd.notnull(det_row['fecha']) else ''
-                html += f"<tr><td>{f_str}</td><td>{det_row.get('numero', '')}</td><td>{det_row.get('nombre cliente', '')}</td><td>$ {formato_arg(det_row.get('total bruto origen', 0))}</td></tr>"
+                html += f"<tr><td>{f_str}</td><td>{det_row.get('numero', '')}</td><td>{det_row.get('nombre cliente', '')}</td><td>$ {formato_arg(abs(det_row.get('total bruto origen', 0)))}</td></tr>"
             html += "</table></div></details>"
         else: html += "</div></div>"
     html += "</div>"
@@ -293,10 +306,10 @@ with tab_analisis:
                     df_h['fecha'] = pd.to_datetime(df_h['fecha'], errors='coerce')
                     df_h = df_h[df_h['fecha'] >= '2025-01-01']
                     
-                    # Separación limpia 2025: Facturas por un lado, Notas de Crédito/Débito por el otro
+                    # FILTRO EXACTO 2025: NC y ND por un lado, Ventas por el otro
                     if 'tipo' in df_h.columns:
-                        df_h_v = df_h[df_h['tipo'].astype(str).str.upper().str.contains('FAC', na=False)]
-                        df_h_nc = df_h[~df_h['tipo'].astype(str).str.upper().str.contains('FAC', na=False)]
+                        df_h_nc = df_h[df_h['tipo'].astype(str).str.upper().str.contains('NC|ND|CRÉDITO|DÉBITO|CREDITO|DEBITO', regex=True, na=False)]
+                        df_h_v = df_h[df_h['tipo'].astype(str).str.upper().str.contains('FAC', regex=True, na=False)]
                     else:
                         df_h_nc, df_h_v = df_h, pd.DataFrame(columns=df_h.columns)
                     
@@ -313,8 +326,11 @@ with tab_analisis:
 
         def calc_m(df_v, df_nc, max_m):
             c = pd.DataFrame({'mes': range(1, max_m+1)})
+            df_nc_abs = df_nc.copy()
+            if 'total bruto origen' in df_nc_abs.columns: df_nc_abs['total bruto origen'] = df_nc_abs['total bruto origen'].abs()
+            
             c = c.merge(df_v.groupby('mes')['total bruto origen'].sum().reset_index(), on='mes', how='left').rename(columns={'total bruto origen': 'ventas'})
-            c = c.merge(df_nc.groupby('mes')['total bruto origen'].sum().reset_index(), on='mes', how='left').rename(columns={'total bruto origen': 'nc'})
+            c = c.merge(df_nc_abs.groupby('mes')['total bruto origen'].sum().reset_index(), on='mes', how='left').rename(columns={'total bruto origen': 'nc'})
             c = c.merge(df_nc.groupby('mes')['numero'].count().reset_index(), on='mes', how='left').rename(columns={'numero': 'cantidad'})
             return c.fillna(0)
             
@@ -323,7 +339,7 @@ with tab_analisis:
         st.markdown("<h1 style='font-size: 3.5rem; font-weight: 900; color: #1a202c; margin-top: 10px; margin-bottom: 10px;'>2026</h1>", unsafe_allow_html=True)
         
         if filtro_tiempo != "Todo el Año":
-            t_nc, t_c = st.session_state['d_nc26']['total bruto origen'].sum(), st.session_state['d_nc26']['numero'].count()
+            t_nc, t_c = abs(st.session_state['d_nc26']['total bruto origen'].sum()), st.session_state['d_nc26']['numero'].count()
             k1, k2, k3 = st.columns([1, 1, 2])
             with k1: st.markdown(tarjeta_kpi(f"NC Emitidas ({filtro_tiempo})", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi(f"Monto Total ({filtro_tiempo})", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
@@ -334,14 +350,14 @@ with tab_analisis:
             with k1: st.markdown(tarjeta_kpi("Total NC Emitidas", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi("Monto Total NC", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
             with k3:
-                nc_millones = abs(t_nc) / 1000000 if t_nc != 0 else 0
+                nc_millones = t_nc / 1000000 if t_nc != 0 else 0
                 pct_26 = (t_nc / d26_calc['ventas'].sum()) if d26_calc['ventas'].sum() != 0 else 0
                 df_hist_anual = pd.DataFrame({'COMPARATIVA ANUAL': ['2023', '2024', '2025', '2026 (Parcial)'], 'CANTIDAD': [336, 358, 342, int(t_c)], 'EN MILLONES': ["76.000", "218.000", "338.000", f"{nc_millones:,.3f}".replace(',', '.')], '% SOBRE VENTA': [0.0486, 0.0438, 0.0548, pct_26]})
                 st.markdown(render_lista(df_hist_anual, st.session_state['d_nc26_raw'], 'COMPARATIVA ANUAL', ['CANTIDAD', 'EN MILLONES', '% SOBRE VENTA']), unsafe_allow_html=True)
 
         df_m1 = pd.DataFrame({'Mes': meses_activos, 'Cantidad': d26_calc['cantidad'], 'Monto NC': d26_calc['nc'], 'Total Venta': d26_calc['ventas']})
-        df_m1['% s/Total NC'] = np.where(d26_calc['nc'].sum()!=0, df_m1['Monto NC'].abs() / abs(d26_calc['nc'].sum()), 0)
-        df_m1['% s/Total Venta'] = np.where(df_m1['Total Venta']!=0, df_m1['Monto NC'].abs() / df_m1['Total Venta'].abs(), 0)
+        df_m1['% s/Total NC'] = np.where(d26_calc['nc'].sum()!=0, df_m1['Monto NC'] / d26_calc['nc'].sum(), 0)
+        df_m1['% s/Total Venta'] = np.where(df_m1['Total Venta']!=0, df_m1['Monto NC'] / df_m1['Total Venta'].abs(), 0)
         c1, c2 = st.columns(2)
         with c1: 
             st.markdown("<h2>Resumen de Notas de Crédito</h2>", unsafe_allow_html=True)
@@ -359,8 +375,8 @@ with tab_analisis:
         with c4:
             st.markdown("<h2>Comparativa % Venta Año a Año</h2>", unsafe_allow_html=True)
             df_m3 = pd.DataFrame({'Mes': meses_activos})
-            df_m3['2025 (%)'] = np.where(d25_calc['ventas']!=0, d25_calc['nc'].abs()/d25_calc['ventas'].abs(), 0)
-            df_m3['2026 (%)'] = np.where(d26_calc['ventas']!=0, d26_calc['nc'].abs()/d26_calc['ventas'].abs(), 0)
+            df_m3['2025 (%)'] = np.where(d25_calc['ventas']!=0, d25_calc['nc']/d25_calc['ventas'].abs(), 0)
+            df_m3['2026 (%)'] = np.where(d26_calc['ventas']!=0, d26_calc['nc']/d26_calc['ventas'].abs(), 0)
             df_m3['Variación'] = df_m3['2026 (%)'] - df_m3['2025 (%)']
             st.markdown(render_lista(df_m3, st.session_state['d_nc26_raw'], 'Mes', ['2025 (%)', '2026 (%)', 'Variación']), unsafe_allow_html=True)
 
@@ -392,7 +408,9 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
             
             st.markdown(f"<h2>📅 Trimestre Actual (Q{int(t_actual)})</h2>", unsafe_allow_html=True)
             if col_agrupar in df_trim.columns and not df_trim.empty:
-                ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                df_trim_abs = df_trim.copy()
+                if 'total bruto origen' in df_trim_abs.columns: df_trim_abs['total bruto origen'] = df_trim_abs['total bruto origen'].abs()
+                ag_trim = df_trim_abs.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
                 ag_trim['Color'] = PALETA_COLORES[:len(ag_trim)]
                 cA, cB = st.columns([1.1, 1.3])
                 with cA: st.markdown(render_lista(ag_trim, df_trim, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
@@ -404,7 +422,9 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
 
             st.markdown("<br><h2>📈 Acumulado Anual 2026</h2>", unsafe_allow_html=True)
             if col_agrupar in df_crudo.columns and not df_crudo.empty:
-                ag_acum = df_crudo.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                df_crudo_abs = df_crudo.copy()
+                if 'total bruto origen' in df_crudo_abs.columns: df_crudo_abs['total bruto origen'] = df_crudo_abs['total bruto origen'].abs()
+                ag_acum = df_crudo_abs.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
                 ag_acum['Color'] = PALETA_COLORES[:len(ag_acum)]
                 cC, cD = st.columns([1.1, 1.3])
                 with cC: st.markdown(render_lista(ag_acum, df_crudo, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
@@ -415,7 +435,9 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
         else:
             df_filtrado = filtrar_df(df_crudo, filtro_tiempo)
             if col_agrupar in df_filtrado.columns and not df_filtrado.empty:
-                ag_data = df_filtrado.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                df_filtrado_abs = df_filtrado.copy()
+                if 'total bruto origen' in df_filtrado_abs.columns: df_filtrado_abs['total bruto origen'] = df_filtrado_abs['total bruto origen'].abs()
+                ag_data = df_filtrado_abs.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
                 ag_data['Color'] = PALETA_COLORES[:len(ag_data)]
                 cA, cB = st.columns([1.1, 1.3])
                 with cA: st.markdown(render_lista(ag_data, df_filtrado, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
