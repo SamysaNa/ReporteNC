@@ -5,7 +5,7 @@ import altair as alt
 
 st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
 
-# --- ESTILOS CSS PERSONALIZADOS (ALINEACIÓN ESTRICTA Y COMPACTA) ---
+# --- ESTILOS CSS PERSONALIZADOS (ALINEACIÓN PERFECTA Y SOMBRAS NEÓN) ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
@@ -23,23 +23,36 @@ button[role="tab"][aria-selected="true"] p { color: #ff4b4b !important; font-siz
 .kpi-titulo { font-size: 13px; font-weight: 900; text-transform: uppercase; }
 .kpi-valor { font-size: 24px; font-weight: 900; }
 
-/* Sistema de Cuadros 100% Alineados (Flexbox) */
-.tabla-canchera { width: 100%; max-width: 700px; display: flex; flex-direction: column; margin-bottom: 20px; }
+/* Títulos de Secciones */
+h2 { font-size: 1.8rem !important; font-weight: 900 !important; color: #2d3748 !important; margin-top: 1rem !important; margin-bottom: 0.5rem !important; }
+
+/* Sistema de Cuadros 100% Alineados */
+.tabla-canchera { width: 100%; display: flex; flex-direction: column; margin-bottom: 20px; }
 .fila-header { display: flex; width: 100%; border-bottom: 2px solid #edf2f7; padding: 2px 10px; margin-bottom: 4px; }
-.celda-header-titulo { flex: 0 0 100px; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; text-align: left; }
+.celda-header-titulo { flex: 0 0 120px; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; text-align: left; }
 .celda-header-valor { flex: 1; text-align: center; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; }
 
-.fila-canchera { display: flex; width: 100%; align-items: center; background: #ffffff; border-radius: 8px; padding: 2px 10px; margin-bottom: 3px; border: 1px solid #edf2f7; }
-.fila-canchera:hover { background: #f7fafc; border-color: #cbd5e0; }
-.celda-titulo { flex: 0 0 100px; font-weight: 800; color: #2d3748; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.fila-canchera { display: flex; width: 100%; align-items: center; background: #ffffff; border-radius: 8px; padding: 2px 10px; margin-bottom: 5px; transition: transform 0.1s; }
+.fila-canchera:hover { transform: scale(1.01); }
+.celda-titulo { flex: 0 0 120px; font-weight: 800; color: #2d3748; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
 .celda-valor { flex: 1; display: flex; justify-content: center; }
 
-.badge { width: 100%; max-width: 90px; padding: 2px 4px; border-radius: 6px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; gap: 4px; text-align: center;}
+/* Badges con Ancho Fijo Estricto y Sin Salto de Línea (No-wrap) */
+.badge { 
+    width: 100%; max-width: 105px; padding: 2px 6px; border-radius: 6px; font-weight: 800; font-size: 0.85rem; 
+    display: flex; align-items: center; justify-content: center; gap: 4px; text-align: center;
+    white-space: nowrap; /* Evita que el $ salte de línea */
+}
 .badge-neutral { background: transparent; color: #4a5568; }
 .badge-alerta { background: rgba(255, 75, 75, 0.12); color: #c53030; }
 .badge-ok { background: rgba(40, 167, 69, 0.12); color: #22543d; }
 </style>
 """, unsafe_allow_html=True)
+
+# --- PALETA DE COLORES PERSONALIZADA (Verde Agua -> Rojo Sangre) ---
+# Se aplica a los gráficos y a los bordes de las tablas de ranking.
+PALETA_COLORES = ['#20b2aa', '#48c774', '#9ece6a', '#d4e157', '#ffd700', '#ffb347', '#ffa07a', '#ff7f50', '#ff5555', '#ff1a1a']
+PALETA_INVERTIDA = PALETA_COLORES[::-1] # Rojo primero (para iterar en la tabla de Mayor a Menor)
 
 # --- FUNCIONES DE FORMATO Y RENDERIZADO ---
 def tarjeta_kpi(titulo, valor):
@@ -53,14 +66,22 @@ def formato_pct(numero):
     if pd.isna(numero) or numero == 0: return "0,00%"
     return f"{abs(numero)*100:,.2f}%".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def render_lista(df, col_titulo, cols_datos):
+def render_lista(df, col_titulo, cols_datos, ranking=False):
     html = "<div class='tabla-canchera'><div class='fila-header'>"
     html += f"<div class='celda-header-titulo'>{col_titulo}</div>"
     for c in cols_datos: html += f"<div class='celda-header-valor'>{c}</div>"
     html += "</div>"
 
-    for _, row in df.iterrows():
-        html += "<div class='fila-canchera'>"
+    for i, (_, row) in enumerate(df.iterrows()):
+        # Lógica de reborde brillante según ranking
+        estilo_borde = ""
+        if ranking:
+            color = PALETA_INVERTIDA[i % len(PALETA_INVERTIDA)]
+            estilo_borde = f"border: 2px solid {color}; box-shadow: 0 0 10px {color}60;"
+        else:
+            estilo_borde = "border: 1px solid #edf2f7;"
+
+        html += f"<div class='fila-canchera' style='{estilo_borde}'>"
         html += f"<div class='celda-titulo' title='{row[col_titulo]}'>{row[col_titulo]}</div>"
         for c in cols_datos:
             val = row[c]
@@ -76,34 +97,40 @@ def render_lista(df, col_titulo, cols_datos):
                 if val > 0.05: clase_extra, txt_val = "badge-alerta", f"❌ {txt_val}"
                 elif val > 0.02: clase_extra, txt_val = "badge-alerta", f"🔴 {txt_val}"
                 else: clase_extra, txt_val = "badge-ok", f"✔️ {txt_val}"
-            elif 'Total' in c or 'Monto' in c: txt_val = f"$ {formato_arg(val)}"
-            elif 'Cantidad' in c or 'Cant' in c: txt_val = str(int(val))
-            else: txt_val = str(val)
+            elif 'Total' in c or 'Monto' in c: 
+                txt_val = f"$&nbsp;{formato_arg(val)}" # &nbsp; asegura que el $ no se separe del número
+            elif 'Cantidad' in c or 'Cant' in c: 
+                txt_val = str(int(val))
+            else: 
+                txt_val = str(val)
 
             html += f"<div class='celda-valor'><div class='badge {clase_extra}'>{txt_val}</div></div>"
         html += "</div>"
     html += "</div>"
     return html
 
-# Funciones de Gráficos (Variedad)
+# Funciones de Gráficos (Altair con paleta personalizada)
+escala_colores = alt.Scale(range=PALETA_COLORES)
+
 def grafico_barras_v(df, x_col, y_col):
-    return alt.Chart(df).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-        x=alt.X(x_col, sort='-y', title=''), y=alt.Y(y_col, title='Cantidad'),
-        color=alt.Color(y_col, scale=alt.Scale(scheme='reds'), legend=None), tooltip=[x_col, y_col]
-    ).properties(height=230)
+    return alt.Chart(df).mark_bar(cornerRadiusTopLeft=5, cornerRadiusTopRight=5).encode(
+        x=alt.X(x_col, sort='-y', title='', axis=alt.Axis(labelAngle=-45)), 
+        y=alt.Y(y_col, title=''),
+        color=alt.Color(y_col, scale=escala_colores, legend=None), tooltip=[x_col, y_col]
+    ).properties(height=320)
 
 def grafico_barras_h(df, x_col, y_col):
-    return alt.Chart(df).mark_bar(cornerRadiusTopRight=3, cornerRadiusBottomRight=3).encode(
-        y=alt.Y(x_col, sort='-x', title=''), x=alt.X(y_col, title='Cantidad'),
-        color=alt.Color(y_col, scale=alt.Scale(scheme='reds'), legend=None), tooltip=[x_col, y_col]
-    ).properties(height=230)
+    return alt.Chart(df).mark_bar(cornerRadiusTopRight=5, cornerRadiusBottomRight=5).encode(
+        y=alt.Y(x_col, sort='-x', title=''), x=alt.X(y_col, title=''),
+        color=alt.Color(y_col, scale=escala_colores, legend=None), tooltip=[x_col, y_col]
+    ).properties(height=320)
 
 def grafico_torta(df, x_col, y_col):
-    return alt.Chart(df).mark_arc(innerRadius=40).encode(
+    return alt.Chart(df).mark_arc(innerRadius=50).encode(
         theta=alt.Theta(field=y_col, type="quantitative"),
-        color=alt.Color(field=x_col, type="nominal", scale=alt.Scale(scheme='reds'), legend=alt.Legend(title="Motivo", orient="right")),
+        color=alt.Color(field=x_col, type="nominal", scale=alt.Scale(scheme='turbo'), legend=alt.Legend(title="", orient="bottom")),
         tooltip=[x_col, y_col]
-    ).properties(height=230)
+    ).properties(height=320)
 
 # --- 🔒 LOGIN ---
 PASS_ADMIN = "admin123"
@@ -185,25 +212,29 @@ with tab_analisis:
         
         c1, c2 = st.columns(2)
         with c1: 
-            st.markdown("<h3 style='font-size: 1.3rem; font-weight: 800; color: #2d3748;'>Resumen de Notas de Crédito</h3>", unsafe_allow_html=True)
+            st.markdown("<h2>Resumen de Notas de Crédito</h2>", unsafe_allow_html=True)
             st.markdown(render_lista(df_m1, 'Mes', ['Cantidad', 'Monto NC', '% s/Total NC']), unsafe_allow_html=True)
         with c2: 
-            st.markdown("<h3 style='font-size: 1.3rem; font-weight: 800; color: #2d3748;'>Relación Venta vs NC</h3>", unsafe_allow_html=True)
+            st.markdown("<h2>Relación Venta vs NC</h2>", unsafe_allow_html=True)
             st.markdown(render_lista(df_m1, 'Mes', ['Total Venta', 'Monto NC', '% s/Total Venta']), unsafe_allow_html=True)
 
-        st.markdown("<h3 style='font-size: 1.5rem; font-weight: 800; color: #2d3748; margin-top: 15px;'>Días Hábiles & Frecuencia</h3>", unsafe_allow_html=True)
-        df_m2 = pd.DataFrame({'Mes': meses_activos, 'Cant 2025': d25['cantidad'], 'Cant 2026': d26['cantidad']})
-        dias_activos = st.session_state['dias_habiles'][:max_mes]
-        df_m2['NC por Día'] = np.where(np.array(dias_activos)>0, df_m2['Cant 2026'] / np.array(dias_activos), 0)
-        df_m2['NC por Día'] = df_m2['NC por Día'].apply(lambda x: f"{x:.2f}".replace('.',','))
-        st.markdown(render_lista(df_m2, 'Mes', ['Cant 2025', 'Cant 2026', 'NC por Día']), unsafe_allow_html=True)
+        # Tablas Inferiores alineadas en columnas para mejor uso del espacio
+        c3, c4 = st.columns(2)
+        with c3:
+            st.markdown("<h2>Días Hábiles & Frecuencia</h2>", unsafe_allow_html=True)
+            df_m2 = pd.DataFrame({'Mes': meses_activos, 'Cant 2025': d25['cantidad'], 'Cant 2026': d26['cantidad']})
+            dias_activos = st.session_state['dias_habiles'][:max_mes]
+            df_m2['NC por Día'] = np.where(np.array(dias_activos)>0, df_m2['Cant 2026'] / np.array(dias_activos), 0)
+            df_m2['NC por Día'] = df_m2['NC por Día'].apply(lambda x: f"{x:.2f}".replace('.',','))
+            st.markdown(render_lista(df_m2, 'Mes', ['Cant 2025', 'Cant 2026', 'NC por Día']), unsafe_allow_html=True)
 
-        st.markdown("<h3 style='font-size: 1.5rem; font-weight: 800; color: #2d3748; margin-top: 15px;'>Comparativa % Venta Año a Año</h3>", unsafe_allow_html=True)
-        df_m3 = pd.DataFrame({'Mes': meses_activos})
-        df_m3['2025 (%)'] = np.where(d25['ventas']!=0, d25['nc'].abs()/d25['ventas'].abs(), 0)
-        df_m3['2026 (%)'] = np.where(d26['ventas']!=0, d26['nc'].abs()/d26['ventas'].abs(), 0)
-        df_m3['Variación Año/Año'] = df_m3['2026 (%)'] - df_m3['2025 (%)']
-        st.markdown(render_lista(df_m3, 'Mes', ['2025 (%)', '2026 (%)', 'Variación Año/Año']), unsafe_allow_html=True)
+        with c4:
+            st.markdown("<h2>Comparativa % Venta Año a Año</h2>", unsafe_allow_html=True)
+            df_m3 = pd.DataFrame({'Mes': meses_activos})
+            df_m3['2025 (%)'] = np.where(d25['ventas']!=0, d25['nc'].abs()/d25['ventas'].abs(), 0)
+            df_m3['2026 (%)'] = np.where(d26['ventas']!=0, d26['nc'].abs()/d26['ventas'].abs(), 0)
+            df_m3['Variación Año/Año'] = df_m3['2026 (%)'] - df_m3['2025 (%)']
+            st.markdown(render_lista(df_m3, 'Mes', ['2025 (%)', '2026 (%)', 'Variación Año/Año']), unsafe_allow_html=True)
 
 # --- SOLAPAS DE ANÁLISIS (TRIMESTRE VS ACUMULADO) ---
 if 'd_nc26' in st.session_state:
@@ -217,13 +248,13 @@ if 'd_nc26' in st.session_state:
             if 'referencia 1' in df_trim.columns: df_trim = df_trim[df_trim['referencia 1'].astype(str).str.contains('ERROR', case=False, na=False)]
             if 'referencia 1' in df_acum.columns: df_acum = df_acum[df_acum['referencia 1'].astype(str).str.contains('ERROR', case=False, na=False)]
 
-        st.markdown(f"<h2 style='font-size: 2.5rem; font-weight: 900; color: #1a202c;'>{titulo}</h2>", unsafe_allow_html=True)
+        st.markdown(f"<br><h2 style='font-size: 2.2rem; color: #1a202c;'>{titulo}</h2>", unsafe_allow_html=True)
         
-        st.markdown(f"<h3 style='font-size: 1.4rem; font-weight: 800; color: #4a5568;'>📅 Trimestre Actual (Q{trimestre_actual})</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h2>📅 Trimestre Actual (Q{trimestre_actual})</h2>", unsafe_allow_html=True)
         if col_agrupar in df_trim.columns and not df_trim.empty:
             ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10)
-            cA, cB = st.columns([1.3, 1]) # 1.3 a 1 para acercar el gráfico al cuadro
-            with cA: st.markdown(render_lista(ag_trim, col_agrupar, ['Cant', 'Total']), unsafe_allow_html=True)
+            cA, cB = st.columns([1, 1.4]) # Más espacio para el gráfico para que quede cerca
+            with cA: st.markdown(render_lista(ag_trim, col_agrupar, ['Cant', 'Total'], ranking=True), unsafe_allow_html=True)
             with cB: 
                 if tipo_grafico == "barras_h": st.altair_chart(grafico_barras_h(ag_trim, col_agrupar, 'Cant'), use_container_width=True)
                 elif tipo_grafico == "torta": st.altair_chart(grafico_torta(ag_trim, col_agrupar, 'Cant'), use_container_width=True)
@@ -231,16 +262,16 @@ if 'd_nc26' in st.session_state:
         else:
             st.info("No hay datos para este trimestre.")
 
-        st.markdown("<br><h3 style='font-size: 1.4rem; font-weight: 800; color: #4a5568;'>📈 Acumulado Anual 2026</h3>", unsafe_allow_html=True)
+        st.markdown("<br><h2>📈 Acumulado Anual 2026</h2>", unsafe_allow_html=True)
         if col_agrupar in df_acum.columns and not df_acum.empty:
             ag_acum = df_acum.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10)
-            cC, cD = st.columns([1.3, 1])
-            with cC: st.markdown(render_lista(ag_acum, col_agrupar, ['Cant', 'Total']), unsafe_allow_html=True)
+            cC, cD = st.columns([1, 1.4])
+            with cC: st.markdown(render_lista(ag_acum, col_agrupar, ['Cant', 'Total'], ranking=True), unsafe_allow_html=True)
             with cD: 
                 if tipo_grafico == "barras_h": st.altair_chart(grafico_barras_h(ag_acum, col_agrupar, 'Cant'), use_container_width=True)
                 elif tipo_grafico == "torta": st.altair_chart(grafico_torta(ag_acum, col_agrupar, 'Cant'), use_container_width=True)
                 else: st.altair_chart(grafico_barras_v(ag_acum, col_agrupar, 'Cant'), use_container_width=True)
 
-    with tab_top10: armar_seccion_doble(d_nc_trim, d_nc, 'nombre cliente', "Top 10 Clientes", tipo_grafico="barras_h")
+    with tab_top10: armar_seccion_doble(d_nc_trim, d_nc, 'nombre cliente', "Análisis Top 10 Clientes", tipo_grafico="barras_h")
     with tab_motivo: armar_seccion_doble(d_nc_trim, d_nc, 'referencia 1', "Análisis de Motivos", tipo_grafico="torta")
-    with tab_error: armar_seccion_doble(d_nc_trim, d_nc, 'cobrador cliente', "Error de Carga", es_error_carga=True, tipo_grafico="barras_v")
+    with tab_error: armar_seccion_doble(d_nc_trim, d_nc, 'cobrador cliente', "Análisis de Error de Carga", es_error_carga=True, tipo_grafico="barras_v")
