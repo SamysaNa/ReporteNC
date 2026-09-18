@@ -9,7 +9,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 st.set_page_config(page_title="Reporte NC Mundi SA", layout="wide")
 
-# --- ESTILOS CSS REFORZADOS ---
+# --- ESTILOS CSS REFORZADOS (GRILLA FLEXIBLE) ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
@@ -28,8 +28,8 @@ h2 { font-size: 1.8rem !important; font-weight: 900 !important; color: #2d3748 !
 .tabla-canchera { width: 100%; display: flex; flex-direction: column; margin-bottom: 20px; }
 .fila-header { display: flex; width: 100%; border-bottom: 2px solid #edf2f7; padding: 2px 10px; margin-bottom: 4px; }
 .celda-header-titulo { flex: 0 0 160px; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; text-align: left; }
-.celda-header-datos { flex: 1; display: flex; justify-content: flex-end; gap: 5px; }
-.celda-header-valor { width: 100px; text-align: right; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; padding-right: 5px;}
+.celda-header-datos { flex: 1; display: flex; justify-content: flex-end; gap: 8px; }
+.celda-header-valor { flex: 1; text-align: right; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; }
 
 .fila-canchera, details.detalle-fila summary { display: flex; width: 100%; align-items: center; background: #ffffff; border-radius: 8px; padding: 4px 10px; margin-bottom: 5px; border: 1px solid #edf2f7; list-style: none; cursor: default;}
 details.detalle-fila summary { cursor: pointer; transition: transform 0.1s; }
@@ -38,9 +38,9 @@ details.detalle-fila summary:hover { transform: scale(1.01); background: #f8fafc
 details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e2e8f0 !important; }
 
 .celda-titulo { flex: 0 0 160px; font-weight: 800; color: #2d3748; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; display: flex; align-items: center; gap: 5px;}
-.celda-datos-container { flex: 1; display: flex; justify-content: flex-end; gap: 5px; align-items: center;}
+.celda-datos-container { flex: 1; display: flex; justify-content: flex-end; gap: 8px; align-items: center;}
 
-.badge { width: 100px; padding: 2px 6px; border-radius: 6px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: flex-end; gap: 4px; text-align: right; white-space: nowrap;}
+.badge { flex: 1; min-width: 80px; padding: 2px 6px; border-radius: 6px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: flex-end; gap: 4px; text-align: right; white-space: nowrap;}
 .badge-neutral { background: transparent; color: #4a5568; }
 .badge-alerta { background: rgba(255, 75, 75, 0.12); color: #c53030; }
 .badge-warn { background: rgba(255, 193, 7, 0.15); color: #b8860b; }
@@ -66,8 +66,8 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     fmt_num = workbook.add_format({'border': 1, 'align': 'center'})
     fmt_plata = workbook.add_format({'num_format': '$ #,##0.00', 'border': 1})
     
-    ws_res = workbook.add_worksheet("Dashboard")
-    ws_res.write(0, 0, "Dashboard NC 2026", fmt_titulo)
+    ws_res = workbook.add_worksheet("Resumen")
+    ws_res.write(0, 0, "Resumen NC 2026", fmt_titulo)
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     
     df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
@@ -94,6 +94,7 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
         if col_agrupar not in df_base.columns: return
         ws = workbook.add_worksheet(nombre)
         ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
+        # reset_index(drop=True) es la magia que arregla el gráfico de Excel
         ag = df_base.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10).reset_index(drop=True)
         
         ws.write(2, 0, col_agrupar.upper(), fmt_header)
@@ -118,7 +119,9 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
 
     agregar_hoja("Top 10 Clientes", "nombre cliente", "bar", df_nc)
     agregar_hoja("Motivos", "referencia 1", "pie", df_nc)
-    df_err = df_nc[df_nc['referencia 1'].astype(str).str.contains('ERROR', case=False, na=False)] if 'referencia 1' in df_nc.columns else df_nc
+    
+    # Filtro exacto de Error de Carga para Excel
+    df_err = df_nc[df_nc['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if 'referencia 1' in df_nc.columns else pd.DataFrame()
     if not df_err.empty: agregar_hoja("Error Carga", "cobrador cliente", "column", df_err)
 
     workbook.close()
@@ -266,8 +269,10 @@ if 'd_nc26_raw' in st.session_state:
     for k in ['d_nc26', 'd_v26', 'd_nc25', 'd_v25']: st.session_state[k] = filtrar_df(st.session_state[f'{k}_raw'], filtro_tiempo)
 
 # --- 📊 DASHBOARD PRINCIPAL ---
-st.title(f"📊 Reporte NC Mundi SA - {filtro_tiempo}")
-tab_analisis, tab_top10, tab_motivo, tab_error = st.tabs(["Dashboard", "Top 10 Clientes", "Motivos", "Error Carga"])
+st.title("📊 Reporte NC Mundi SA")
+if filtro_tiempo != "Todo el Año": st.markdown(f"#### Filtrado por: {filtro_tiempo}")
+
+tab_analisis, tab_top10, tab_motivo, tab_error = st.tabs(["Resumen", "Top 10 Clientes", "Motivos", "Error Carga"])
 
 with tab_analisis:
     if st.session_state.rol == "admin":
@@ -283,10 +288,11 @@ with tab_analisis:
                     df_v, df_n, df_h = df_v.drop_duplicates(subset=['numero']), df_n.drop_duplicates(subset=['numero']), df_h.drop_duplicates(subset=['numero'])
                     df_h['fecha'] = pd.to_datetime(df_h['fecha'], errors='coerce')
                     df_h = df_h[df_h['fecha'] >= '2025-01-01']
-                    # Filtro estricto 2025: contar todo menos las facturas
+                    
+                    # Filtro 2025: TODO excepto las facturas (para contar correctamente NC y ND)
                     if 'tipo' in df_h.columns:
-                        df_h_nc = df_h[~df_h['tipo'].astype(str).str.contains('FAC|FACTURA', case=False, na=False)]
-                        df_h_v = df_h[df_h['tipo'].astype(str).str.contains('FAC|FACTURA', case=False, na=False)]
+                        df_h_nc = df_h[~df_h['tipo'].astype(str).str.upper().str.contains('FAC', na=False)]
+                        df_h_v = df_h[df_h['tipo'].astype(str).str.upper().str.contains('FAC', na=False)]
                     else:
                         df_h_nc, df_h_v = df_h, pd.DataFrame(columns=df_h.columns)
                     
@@ -298,7 +304,6 @@ with tab_analisis:
         d26_raw, d25_raw = st.session_state['d_nc26_raw'], st.session_state['d_nc25_raw']
         v26_raw, v25_raw = st.session_state['d_v26_raw'], st.session_state['d_v25_raw']
         
-        # Calcular el último mes con datos cargados para determinar el rótulo parcial
         max_mes = int(d26_raw['mes'].max()) if not d26_raw.empty else 12
         meses_activos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][:max_mes]
 
@@ -325,9 +330,10 @@ with tab_analisis:
             with k1: st.markdown(tarjeta_kpi("Total NC Emitidas", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi("Monto Total NC", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
             with k3:
-                v_26_mill = (d26_calc['ventas'].sum() / 1000000) if d26_calc['ventas'].sum() != 0 else 0
+                # Cálculo de NC en Millones correcto: abs(t_nc) / 1,000,000
+                nc_millones = abs(t_nc) / 1000000 if t_nc != 0 else 0
                 pct_26 = (t_nc / d26_calc['ventas'].sum()) if d26_calc['ventas'].sum() != 0 else 0
-                df_hist_anual = pd.DataFrame({'COMPARATIVA ANUAL': ['2023', '2024', '2025', '2026 (Parcial)'], 'CANTIDAD': [336, 358, 342, int(t_c)], 'EN MILLONES': ["76.000", "218.000", "338.000", f"{v_26_mill:,.3f}".replace(',', '.')], '% SOBRE VENTA': [0.0486, 0.0438, 0.0548, pct_26]})
+                df_hist_anual = pd.DataFrame({'COMPARATIVA ANUAL': ['2023', '2024', '2025', '2026 (Parcial)'], 'CANTIDAD': [336, 358, 342, int(t_c)], 'EN MILLONES': ["76.000", "218.000", "338.000", f"{nc_millones:,.3f}".replace(',', '.')], '% SOBRE VENTA': [0.0486, 0.0438, 0.0548, pct_26]})
                 st.markdown(render_lista(df_hist_anual, st.session_state['d_nc26_raw'], 'COMPARATIVA ANUAL', ['CANTIDAD', 'EN MILLONES', '% SOBRE VENTA']), unsafe_allow_html=True)
 
         df_m1 = pd.DataFrame({'Mes': meses_activos, 'Cantidad': d26_calc['cantidad'], 'Monto NC': d26_calc['nc'], 'Total Venta': d26_calc['ventas']})
@@ -370,11 +376,12 @@ with tab_analisis:
         ).properties(width=200, height=250)
         st.altair_chart(chart_trim, use_container_width=False)
 
-# --- SOLAPAS DE ANÁLISIS ---
+# --- SOLAPAS DE ANÁLISIS DETALLADO ---
 if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty:
     
     def armar_seccion(df_crudo, col_agrupar, titulo, es_error=False, tipo_grafico="barras_h"):
-        if es_error: df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.contains('ERROR', case=False, na=False)] if 'referencia 1' in df_crudo.columns else df_crudo
+        # Filtro estricto y exacto para "Error de Carga"
+        if es_error: df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if 'referencia 1' in df_crudo.columns else df_crudo
         
         if filtro_tiempo == "Todo el Año":
             st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo}</h2>", unsafe_allow_html=True)
@@ -405,7 +412,6 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
                     else: st.altair_chart(grafico_barras_v(ag_acum, col_agrupar, 'Cant'), use_container_width=True)
         else:
             df_filtrado = filtrar_df(df_crudo, filtro_tiempo)
-            st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo} - {filtro_tiempo}</h2>", unsafe_allow_html=True)
             if col_agrupar in df_filtrado.columns and not df_filtrado.empty:
                 ag_data = df_filtrado.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
                 ag_data['Color'] = PALETA_COLORES[:len(ag_data)]
