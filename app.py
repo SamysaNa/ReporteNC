@@ -56,7 +56,7 @@ details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e
 PALETA_COLORES = ['#ff1a1a', '#ff5555', '#ff7f50', '#ffa07a', '#ffb347', '#ffd700', '#d4e157', '#9ece6a', '#48c774', '#20b2aa']
 ID_DEL_SHEET = "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY"
 
-# --- EXPORTACIÓN EXCEL FULL (CON SOLAPA RESUMEN GRÁFICA) ---
+# --- EXPORTACIÓN EXCEL FULL ---
 def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -66,7 +66,6 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     fmt_num = workbook.add_format({'border': 1, 'align': 'center'})
     fmt_plata = workbook.add_format({'num_format': '$ #,##0.00', 'border': 1})
     
-    # Solapa Resumen
     ws_res = workbook.add_worksheet("Resumen")
     ws_res.write(0, 0, "Resumen NC 2026", fmt_titulo)
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -74,11 +73,8 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     if not df_nc.empty and 'fecha' in df_nc.columns:
         df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
         df_v['mes'] = pd.to_datetime(df_v['fecha']).dt.month
-        
-        # Filtros con valores absolutos para Excel
         df_nc_abs = df_nc.copy()
         if 'total bruto origen' in df_nc_abs.columns: df_nc_abs['total bruto origen'] = df_nc_abs['total bruto origen'].abs()
-        
         v_m = df_v.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Ventas'})
         nc_m = df_nc_abs.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Monto NC'})
         nc_c = df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'Cantidad'})
@@ -99,7 +95,6 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
         ws_res.write(i+3, 3, row['Ventas'], fmt_plata)
         ws_res.write(i+3, 4, dias_habiles[i] if i < len(dias_habiles) else 20, fmt_num)
         
-    # Gráfico para Resumen en Excel
     chart_res = workbook.add_chart({'type': 'column'})
     chart_res.add_series({'name': 'Ventas', 'categories': ['Resumen', 3, 0, 14, 0], 'values': ['Resumen', 3, 3, 14, 3], 'fill': {'color': '#4bc0c0'}})
     chart_res.add_series({'name': 'Monto NC', 'categories': ['Resumen', 3, 0, 14, 0], 'values': ['Resumen', 3, 2, 14, 2], 'fill': {'color': '#ff4b4b'}})
@@ -306,10 +301,12 @@ with tab_analisis:
                     df_h['fecha'] = pd.to_datetime(df_h['fecha'], errors='coerce')
                     df_h = df_h[df_h['fecha'] >= '2025-01-01']
                     
-                    # FILTRO EXACTO 2025: NC y ND por un lado, Ventas por el otro
+                    # FILTRO EXACTO PARA 2025 (Lista brindada por el usuario)
                     if 'tipo' in df_h.columns:
-                        df_h_nc = df_h[df_h['tipo'].astype(str).str.upper().str.contains('NC|ND|CRÉDITO|DÉBITO|CREDITO|DEBITO', regex=True, na=False)]
-                        df_h_v = df_h[df_h['tipo'].astype(str).str.upper().str.contains('FAC', regex=True, na=False)]
+                        tipos_nc_nd = ('C10', 'C11', 'C12', 'C14', 'C16', 'CA2', 'CA3', 'CA4', 'CA6', 'CA7', 'CA8', 'CA9', 'CAC', 'CAE', 'CB3', 'DA1', 'DA2', 'DA3', 'NC2', 'NC3', 'NC6', 'NC7', 'NC8', 'NCC')
+                        mask_nc = df_h['tipo'].astype(str).str.strip().str.upper().str.startswith(tipos_nc_nd)
+                        df_h_nc = df_h[mask_nc]
+                        df_h_v = df_h[~mask_nc]
                     else:
                         df_h_nc, df_h_v = df_h, pd.DataFrame(columns=df_h.columns)
                     
