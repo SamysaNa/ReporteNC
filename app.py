@@ -9,7 +9,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 st.set_page_config(page_title="Reporte NC Mundi SA", layout="wide")
 
-# --- ESTILOS CSS REFORZADOS (GRILLA FLEXIBLE) ---
+# --- ESTILOS CSS REFORZADOS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
@@ -56,7 +56,7 @@ details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e
 PALETA_COLORES = ['#ff1a1a', '#ff5555', '#ff7f50', '#ffa07a', '#ffb347', '#ffd700', '#d4e157', '#9ece6a', '#48c774', '#20b2aa']
 ID_DEL_SHEET = "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY"
 
-# --- EXPORTACIÓN EXCEL FULL ---
+# --- EXPORTACIÓN EXCEL FULL (INCLUYE SOLAPA RESUMEN) ---
 def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output, {'in_memory': True})
@@ -66,22 +66,28 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     fmt_num = workbook.add_format({'border': 1, 'align': 'center'})
     fmt_plata = workbook.add_format({'num_format': '$ #,##0.00', 'border': 1})
     
+    # 1. Solapa Resumen
     ws_res = workbook.add_worksheet("Resumen")
     ws_res.write(0, 0, "Resumen NC 2026", fmt_titulo)
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     
-    df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
-    df_v['mes'] = pd.to_datetime(df_v['fecha']).dt.month
-    v_m = df_v.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Ventas'})
-    nc_m = df_nc.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Monto NC'})
-    nc_c = df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'Cantidad'})
+    if not df_nc.empty and 'fecha' in df_nc.columns:
+        df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
+        df_v['mes'] = pd.to_datetime(df_v['fecha']).dt.month
+        v_m = df_v.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Ventas'})
+        nc_m = df_nc.groupby('mes')['total bruto origen'].sum().reset_index().rename(columns={'total bruto origen': 'Monto NC'})
+        nc_c = df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'Cantidad'})
+    else:
+        v_m = pd.DataFrame(columns=['mes', 'Ventas'])
+        nc_m = pd.DataFrame(columns=['mes', 'Monto NC'])
+        nc_c = pd.DataFrame(columns=['mes', 'Cantidad'])
     
     calc = pd.DataFrame({'Mes_Num': range(1, 13), 'Mes': meses})
     calc = calc.merge(v_m, left_on='Mes_Num', right_on='mes', how='left').merge(nc_m, left_on='Mes_Num', right_on='mes', how='left').merge(nc_c, left_on='Mes_Num', right_on='mes', how='left').fillna(0)
     
     headers_res = ["Mes", "Cantidad", "Monto NC", "Ventas", "Días Hábiles"]
     for col, h in enumerate(headers_res): ws_res.write(2, col, h, fmt_header)
-    ws_res.set_column(0, 4, 15)
+    ws_res.set_column(0, 4, 18)
     
     for i, row in calc.iterrows():
         ws_res.write(i+3, 0, row['Mes'], fmt_num)
@@ -91,10 +97,9 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
         ws_res.write(i+3, 4, dias_habiles[i] if i < len(dias_habiles) else 20, fmt_num)
         
     def agregar_hoja(nombre, col_agrupar, tipo_grafico, df_base):
-        if col_agrupar not in df_base.columns: return
+        if df_base.empty or col_agrupar not in df_base.columns: return
         ws = workbook.add_worksheet(nombre)
         ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
-        # reset_index(drop=True) es la magia que arregla el gráfico de Excel
         ag = df_base.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10).reset_index(drop=True)
         
         ws.write(2, 0, col_agrupar.upper(), fmt_header)
@@ -120,8 +125,7 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     agregar_hoja("Top 10 Clientes", "nombre cliente", "bar", df_nc)
     agregar_hoja("Motivos", "referencia 1", "pie", df_nc)
     
-    # Filtro exacto de Error de Carga para Excel
-    df_err = df_nc[df_nc['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if 'referencia 1' in df_nc.columns else pd.DataFrame()
+    df_err = df_nc[df_nc['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if not df_nc.empty and 'referencia 1' in df_nc.columns else pd.DataFrame()
     if not df_err.empty: agregar_hoja("Error Carga", "cobrador cliente", "column", df_err)
 
     workbook.close()
@@ -289,10 +293,10 @@ with tab_analisis:
                     df_h['fecha'] = pd.to_datetime(df_h['fecha'], errors='coerce')
                     df_h = df_h[df_h['fecha'] >= '2025-01-01']
                     
-                    # Filtro 2025: TODO excepto las facturas (para contar correctamente NC y ND)
+                    # Separación limpia 2025: Facturas por un lado, Notas de Crédito/Débito por el otro
                     if 'tipo' in df_h.columns:
-                        df_h_nc = df_h[~df_h['tipo'].astype(str).str.upper().str.contains('FAC', na=False)]
                         df_h_v = df_h[df_h['tipo'].astype(str).str.upper().str.contains('FAC', na=False)]
+                        df_h_nc = df_h[~df_h['tipo'].astype(str).str.upper().str.contains('FAC', na=False)]
                     else:
                         df_h_nc, df_h_v = df_h, pd.DataFrame(columns=df_h.columns)
                     
@@ -330,7 +334,6 @@ with tab_analisis:
             with k1: st.markdown(tarjeta_kpi("Total NC Emitidas", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi("Monto Total NC", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
             with k3:
-                # Cálculo de NC en Millones correcto: abs(t_nc) / 1,000,000
                 nc_millones = abs(t_nc) / 1000000 if t_nc != 0 else 0
                 pct_26 = (t_nc / d26_calc['ventas'].sum()) if d26_calc['ventas'].sum() != 0 else 0
                 df_hist_anual = pd.DataFrame({'COMPARATIVA ANUAL': ['2023', '2024', '2025', '2026 (Parcial)'], 'CANTIDAD': [336, 358, 342, int(t_c)], 'EN MILLONES': ["76.000", "218.000", "338.000", f"{nc_millones:,.3f}".replace(',', '.')], '% SOBRE VENTA': [0.0486, 0.0438, 0.0548, pct_26]})
@@ -380,7 +383,6 @@ with tab_analisis:
 if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty:
     
     def armar_seccion(df_crudo, col_agrupar, titulo, es_error=False, tipo_grafico="barras_h"):
-        # Filtro estricto y exacto para "Error de Carga"
         if es_error: df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if 'referencia 1' in df_crudo.columns else df_crudo
         
         if filtro_tiempo == "Todo el Año":
