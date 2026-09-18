@@ -9,7 +9,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 st.set_page_config(page_title="Reporte de Notas de Crédito", layout="wide")
 
-# --- ESTILOS CSS PERSONALIZADOS (AHORA CON ACORDEÓN DESPLEGABLE) ---
+# --- ESTILOS CSS REFORZADOS (GRILLA ESTRICTA) ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
@@ -19,48 +19,138 @@ button[role="tab"] p { font-size: 2rem !important; font-weight: 900 !important; 
 button[role="tab"][aria-selected="true"] { border-bottom: 5px solid #ff4b4b !important; }
 button[role="tab"][aria-selected="true"] p { color: #ff4b4b !important; font-size: 2.1rem !important; }
 h2 { font-size: 1.8rem !important; font-weight: 900 !important; color: #2d3748 !important; margin-top: 1rem !important; margin-bottom: 0.5rem !important; }
+
 .kpi-card { background-color: white; border-radius: 12px; padding: 15px; text-align: center; border: 2px solid #e2e8f0; height: 100%; display: flex; flex-direction: column; justify-content: center;}
 .kpi-rojo { border-color: #ff4b4b; color: #ff4b4b; background-color: rgba(255, 75, 75, 0.05); }
 .kpi-titulo { font-size: 13px; font-weight: 900; text-transform: uppercase; }
 .kpi-valor { font-size: 26px; font-weight: 900; }
+
 .tabla-canchera { width: 100%; display: flex; flex-direction: column; margin-bottom: 20px; }
 .fila-header { display: flex; width: 100%; border-bottom: 2px solid #edf2f7; padding: 2px 10px; margin-bottom: 4px; }
-.celda-header-titulo { flex: 0 0 130px; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; text-align: left; }
-.celda-header-valor { flex: 1; text-align: right; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; padding-right: 15px;}
+.celda-header-titulo { flex: 0 0 140px; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; text-align: left; }
+.celda-header-datos { flex: 1; display: flex; justify-content: flex-end; gap: 5px; }
+.celda-header-valor { width: 100px; text-align: right; font-size: 0.75rem; font-weight: 900; color: #718096; text-transform: uppercase; padding-right: 5px;}
 
-/* Estilos para el Desplegable (Details/Summary) */
-details.detalle-fila { margin-bottom: 5px; width: 100%; }
-details.detalle-fila summary { display: flex; width: 100%; align-items: center; background: #ffffff; border-radius: 8px; padding: 2px 10px; transition: transform 0.1s; cursor: pointer; list-style: none; position: relative; z-index: 2;}
+/* Contenedores Flex estrictos para evitar colapso vertical */
+.fila-canchera, details.detalle-fila summary { display: flex; width: 100%; align-items: center; background: #ffffff; border-radius: 8px; padding: 4px 10px; margin-bottom: 5px; border: 1px solid #edf2f7; list-style: none; cursor: default;}
+details.detalle-fila summary { cursor: pointer; transition: transform 0.1s; }
 details.detalle-fila summary::-webkit-details-marker { display: none; }
 details.detalle-fila summary:hover { transform: scale(1.01); background: #f8fafc; }
 details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e2e8f0 !important; }
-.celda-titulo { flex: 0 0 130px; font-weight: 800; color: #2d3748; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; display: flex; align-items: center; gap: 5px;}
-.celda-valor { flex: 1; display: flex; justify-content: flex-end; }
 
-/* Tabla interna del desglose */
-.detalle-contenido { background: #f7fafc; padding: 10px 15px; border-radius: 0 0 8px 8px; border: 1px solid #edf2f7; border-top: none; margin-top: -2px; font-size: 0.8rem; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);}
-.tabla-interna { width: 100%; border-collapse: collapse; }
-.tabla-interna th { color: #a0aec0; font-weight: 900; text-transform: uppercase; text-align: left; padding: 4px 8px; border-bottom: 2px solid #e2e8f0; font-size: 0.7rem; }
-.tabla-interna td { color: #4a5568; font-weight: 700; text-align: left; padding: 4px 8px; border-bottom: 1px solid #edf2f7; }
+.celda-titulo { flex: 0 0 140px; font-weight: 800; color: #2d3748; font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; display: flex; align-items: center; gap: 5px;}
+.celda-datos-container { flex: 1; display: flex; justify-content: flex-end; gap: 5px; align-items: center;}
 
-.badge { width: 100%; max-width: 95px; padding: 2px 6px; border-radius: 6px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: flex-end; gap: 4px; text-align: right; white-space: nowrap;}
+.badge { width: 100px; padding: 2px 6px; border-radius: 6px; font-weight: 800; font-size: 0.85rem; display: flex; align-items: center; justify-content: flex-end; gap: 4px; text-align: right; white-space: nowrap;}
 .badge-neutral { background: transparent; color: #4a5568; }
 .badge-alerta { background: rgba(255, 75, 75, 0.12); color: #c53030; }
 .badge-warn { background: rgba(255, 193, 7, 0.15); color: #b8860b; }
 .badge-ok { background: rgba(40, 167, 69, 0.12); color: #22543d; }
+
+.detalle-contenido { background: #f7fafc; padding: 10px 15px; border-radius: 0 0 8px 8px; border: 1px solid #edf2f7; border-top: none; margin-top: -5px; font-size: 0.8rem; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); margin-bottom: 5px;}
+.tabla-interna { width: 100%; border-collapse: collapse; }
+.tabla-interna th { color: #a0aec0; font-weight: 900; text-transform: uppercase; text-align: left; padding: 4px 8px; border-bottom: 2px solid #e2e8f0; font-size: 0.7rem; }
+.tabla-interna td { color: #4a5568; font-weight: 700; text-align: left; padding: 4px 8px; border-bottom: 1px solid #edf2f7; }
 </style>
 """, unsafe_allow_html=True)
 
 PALETA_COLORES = ['#ff1a1a', '#ff5555', '#ff7f50', '#ffa07a', '#ffb347', '#ffd700', '#d4e157', '#9ece6a', '#48c774', '#20b2aa']
 ID_DEL_SHEET = "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY"
 
-# --- FUNCIONES DE BASE DE DATOS (GOOGLE SHEETS) ---
+# --- FUNCIONES DE EXPORTACIÓN EXCEL FULL ---
+def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
+    output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
+    
+    fmt_titulo = workbook.add_format({'bold': True, 'font_size': 16, 'color': '#2d3748'})
+    fmt_header = workbook.add_format({'bold': True, 'bg_color': '#2d3748', 'font_color': 'white', 'border': 1, 'align': 'center'})
+    fmt_num = workbook.add_format({'border': 1, 'align': 'center'})
+    fmt_plata = workbook.add_format({'num_format': '$ #,##0.00', 'border': 1})
+    
+    # 1. Solapa Resumen
+    ws_res = workbook.add_worksheet("Dashboard")
+    ws_res.write(0, 0, "Dashboard NC 2026", fmt_titulo)
+    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    
+    df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
+    df_v['mes'] = pd.to_datetime(df_v['fecha']).dt.month
+    v_m = df_v.groupby('mes')['importe total origen'].sum().reset_index().rename(columns={'importe total origen': 'Ventas'})
+    nc_m = df_nc.groupby('mes')['importe total origen'].sum().reset_index().rename(columns={'importe total origen': 'Monto NC'})
+    nc_c = df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'Cantidad'})
+    
+    calc = pd.DataFrame({'Mes_Num': range(1, 13), 'Mes': meses})
+    calc = calc.merge(v_m, left_on='Mes_Num', right_on='mes', how='left').merge(nc_m, left_on='Mes_Num', right_on='mes', how='left').merge(nc_c, left_on='Mes_Num', right_on='mes', how='left').fillna(0)
+    
+    headers_res = ["Mes", "Cantidad", "Monto NC", "Ventas", "Días Hábiles"]
+    for col, h in enumerate(headers_res): ws_res.write(2, col, h, fmt_header)
+    ws_res.set_column(0, 4, 15)
+    
+    for i, row in calc.iterrows():
+        ws_res.write(i+3, 0, row['Mes'], fmt_num)
+        ws_res.write(i+3, 1, row['Cantidad'], fmt_num)
+        ws_res.write(i+3, 2, row['Monto NC'], fmt_plata)
+        ws_res.write(i+3, 3, row['Ventas'], fmt_plata)
+        ws_res.write(i+3, 4, dias_habiles[i] if i < len(dias_habiles) else 20, fmt_num)
+        
+    # Funciones de Solapas Analíticas
+    def agregar_hoja(nombre, col_agrupar, tipo_grafico):
+        if col_agrupar not in df_nc.columns: return
+        ws = workbook.add_worksheet(nombre)
+        ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
+        ag = df_nc.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10)
+        
+        ws.write(2, 0, col_agrupar.upper(), fmt_header)
+        ws.write(2, 1, "CANT", fmt_header)
+        ws.write(2, 2, "MONTO", fmt_header)
+        ws.set_column(0, 0, 30); ws.set_column(1, 2, 15)
+        
+        for i, row in ag.iterrows():
+            ws.write(i+3, 0, row[col_agrupar], fmt_num)
+            ws.write(i+3, 1, row['Cantidad'], fmt_num)
+            ws.write(i+3, 2, row['Total'], fmt_plata)
+            
+        chart = workbook.add_chart({'type': tipo_grafico})
+        chart.add_series({
+            'name': 'Cantidad',
+            'categories': [nombre, 3, 0, len(ag)+2, 0],
+            'values':     [nombre, 3, 1, len(ag)+2, 1],
+            'points':     [{'fill': {'color': c}} for c in PALETA_COLORES[:len(ag)]]
+        })
+        chart.set_legend({'none': True}) if tipo_grafico != 'pie' else None
+        ws.insert_chart('E3', chart)
+
+    agregar_hoja("Top 10 Clientes", "nombre cliente", "bar")
+    agregar_hoja("Motivos", "referencia 1", "pie")
+    
+    df_err = df_nc[df_nc['referencia 1'].astype(str).str.contains('ERROR', case=False, na=False)] if 'referencia 1' in df_nc.columns else df_nc
+    if not df_err.empty:
+        ws_err = workbook.add_worksheet("Error Carga")
+        ws_err.write(0, 0, "Análisis: Error de Carga", fmt_titulo)
+        ag_e = df_err.groupby('cobrador cliente').agg(Cantidad=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10)
+        ws_err.write(2, 0, "COBRADOR", fmt_header); ws_err.write(2, 1, "CANT", fmt_header); ws_err.write(2, 2, "MONTO", fmt_header)
+        ws_err.set_column(0, 0, 30); ws_err.set_column(1, 2, 15)
+        for i, row in ag_e.iterrows():
+            ws_err.write(i+3, 0, row['cobrador cliente'], fmt_num)
+            ws_err.write(i+3, 1, row['Cantidad'], fmt_num)
+            ws_err.write(i+3, 2, row['Total'], fmt_plata)
+        chart_e = workbook.add_chart({'type': 'column'})
+        chart_e.add_series({
+            'categories': ["Error Carga", 3, 0, len(ag_e)+2, 0],
+            'values': ["Error Carga", 3, 1, len(ag_e)+2, 1],
+            'points': [{'fill': {'color': c}} for c in PALETA_COLORES[:len(ag_e)]]
+        })
+        chart_e.set_legend({'none': True})
+        ws_err.insert_chart('E3', chart_e)
+
+    workbook.close()
+    output.seek(0)
+    return output
+
 def conectar_google():
-    if "gcp_service_account" not in st.secrets: return None, "Falta configurar credenciales (Secrets)."
+    if "gcp_service_account" not in st.secrets: return None, "Falta configurar credenciales."
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
-    client = gspread.authorize(creds)
-    return client.open_by_key(ID_DEL_SHEET), "Conexión exitosa"
+    return gspread.authorize(creds).open_by_key(ID_DEL_SHEET), "Conexión exitosa"
 
 def guardar_base_completa_en_sheets(dict_dfs):
     sheet_doc, msg = conectar_google()
@@ -85,6 +175,8 @@ def cargar_base_desde_sheets():
         st.session_state['d_v26_raw'] = pd.DataFrame(sheet_doc.worksheet("BD_Ventas_26").get_all_records())
         st.session_state['d_nc25_raw'] = pd.DataFrame(sheet_doc.worksheet("BD_NC_25").get_all_records())
         st.session_state['d_v25_raw'] = pd.DataFrame(sheet_doc.worksheet("BD_Ventas_25").get_all_records())
+        try: st.session_state['dias_habiles'] = pd.DataFrame(sheet_doc.worksheet("BD_Config").get_all_records())['Dias'].tolist()
+        except: pass
         for key in ['d_nc26_raw', 'd_v26_raw', 'd_nc25_raw', 'd_v25_raw']:
             if 'fecha' in st.session_state[key].columns:
                 st.session_state[key]['fecha'] = pd.to_datetime(st.session_state[key]['fecha'], errors='coerce')
@@ -92,34 +184,6 @@ def cargar_base_desde_sheets():
                 st.session_state[key]['trimestre'] = (st.session_state[key]['mes'] - 1) // 3 + 1
         return True, "Información descargada exitosamente."
     except Exception as e: return False, f"Error descargando: {e}"
-
-def generar_excel_avanzado(df_nc, df_v):
-    output = io.BytesIO()
-    workbook = xlsxwriter.Workbook(output, {'in_memory': True})
-    fmt_header = workbook.add_format({'bold': True, 'bg_color': '#2d3748', 'font_color': 'white', 'border': 1, 'align': 'center'})
-    fmt_plata = workbook.add_format({'num_format': '$ #,##0.00', 'border': 1})
-    fmt_num = workbook.add_format({'border': 1, 'align': 'center'})
-    fmt_titulo = workbook.add_format({'bold': True, 'font_size': 14})
-
-    def agregar_hoja(nombre, col_agrupar, tipo_g="column"):
-        ws = workbook.add_worksheet(nombre)
-        ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
-        if col_agrupar not in df_nc.columns: return
-        ag = df_nc.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cantidad', ascending=False).head(10)
-        ws.write(2, 0, col_agrupar.upper(), fmt_header); ws.write(2, 1, "CANT", fmt_header); ws.write(2, 2, "MONTO", fmt_header)
-        ws.set_column(0, 0, 25); ws.set_column(1, 2, 15)
-        for i, row in ag.iterrows(): ws.write(i+3, 0, row[col_agrupar], fmt_num); ws.write(i+3, 1, row['Cantidad'], fmt_num); ws.write(i+3, 2, row['Total'], fmt_plata)
-        chart = workbook.add_chart({'type': tipo_g})
-        chart.add_series({'categories': [nombre, 3, 0, len(ag)+2, 0], 'values': [nombre, 3, 1, len(ag)+2, 1], 'fill': {'color': '#ff4b4b'}})
-        ws.insert_chart('E3', chart)
-
-    agregar_hoja("Top 10 Clientes", "nombre cliente", "bar")
-    agregar_hoja("Motivos", "referencia 1", "pie")
-    df_err = df_nc[df_nc['referencia 1'].astype(str).str.contains('ERROR', case=False, na=False)] if 'referencia 1' in df_nc.columns else df_nc
-    agregar_hoja("Error Carga", "cobrador cliente", "column")
-    workbook.close()
-    output.seek(0)
-    return output
 
 # --- RENDERIZADO VISUAL ---
 def tarjeta_kpi(titulo, valor): return f"""<div class="kpi-card kpi-rojo"><div class="kpi-titulo">{titulo}</div><div class="kpi-valor">🔴 ⬆ {valor}</div></div>"""
@@ -131,19 +195,15 @@ def icono_cantidad(val):
     else: return "badge-alerta", f"❌ {int(val)}"
 
 def render_lista(df_agrupado, df_crudo, col_titulo, cols_datos, ranking=False, desglosar=False):
-    html = "<div class='tabla-canchera'><div class='fila-header'>" + f"<div class='celda-header-titulo'>{col_titulo}</div>"
+    html = "<div class='tabla-canchera'><div class='fila-header'>" + f"<div class='celda-header-titulo'>{col_titulo}</div><div class='celda-header-datos'>"
     for c in cols_datos: html += f"<div class='celda-header-valor'>{c}</div>"
-    html += "</div>"
+    html += "</div></div>"
     
     for _, row in df_agrupado.iterrows():
         estilo_borde = f"border: 2px solid {row['Color']}; box-shadow: 0 0 10px {row['Color']}60;" if ranking and 'Color' in row else "border: 1px solid #edf2f7;"
-        
-        # Etiqueta details/summary para el menú desplegable
-        if desglosar: html += f"<details class='detalle-fila'><summary style='{estilo_borde}'>"
-        else: html += f"<div class='fila-canchera' style='{estilo_borde}'>"
-        
+        html += f"<details class='detalle-fila'><summary style='{estilo_borde}'>" if desglosar else f"<div class='fila-canchera' style='{estilo_borde}'>"
         flechita = "▶ " if desglosar else ""
-        html += f"<div class='celda-titulo' title='{row[col_titulo]}'>{flechita}{row[col_titulo]}</div>"
+        html += f"<div class='celda-titulo' title='{row[col_titulo]}'>{flechita}{row[col_titulo]}</div><div class='celda-datos-container'>"
         
         for c in cols_datos:
             val, clase_extra, txt_val = row[c], "badge-neutral", ""
@@ -153,24 +213,17 @@ def render_lista(df_agrupado, df_crudo, col_titulo, cols_datos, ranking=False, d
             elif 'Total' in c or 'Monto' in c: txt_val = f"$&nbsp;{formato_arg(val)}"
             elif 'Cantidad' in c or 'Cant' in c: txt_val = str(int(val))
             else: txt_val = str(val)
-            html += f"<div class='celda-valor'><div class='badge {clase_extra}'>{txt_val}</div></div>"
+            html += f"<div class='badge {clase_extra}'>{txt_val}</div>"
             
         if desglosar:
-            html += "</summary>"
-            # Generar el desglose interno
-            val_agrupador = row[col_titulo]
-            df_det = df_crudo[df_crudo[col_titulo] == val_agrupador].sort_values('fecha', ascending=False)
-            html += "<div class='detalle-contenido'><table class='tabla-interna'>"
-            html += "<tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Monto Bruto</th></tr>"
+            html += "</div></summary>"
+            df_det = df_crudo[df_crudo[col_titulo] == row[col_titulo]].sort_values('fecha', ascending=False)
+            html += "<div class='detalle-contenido'><table class='tabla-interna'><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Monto Bruto</th></tr>"
             for _, det_row in df_det.iterrows():
                 f_str = det_row['fecha'].strftime('%d/%m/%Y') if pd.notnull(det_row['fecha']) else ''
-                num = det_row.get('numero', '')
-                cli = det_row.get('nombre cliente', '')
-                monto = f"$ {formato_arg(det_row.get('importe total origen', 0))}"
-                html += f"<tr><td>{f_str}</td><td>{num}</td><td>{cli}</td><td>{monto}</td></tr>"
+                html += f"<tr><td>{f_str}</td><td>{det_row.get('numero', '')}</td><td>{det_row.get('nombre cliente', '')}</td><td>$ {formato_arg(det_row.get('importe total origen', 0))}</td></tr>"
             html += "</table></div></details>"
-        else:
-            html += "</div>"
+        else: html += "</div></div>"
     html += "</div>"
     return html
 
@@ -189,28 +242,33 @@ if not st.session_state.rol:
         else: st.error("Clave incorrecta.")
     st.stop() 
 
-# --- CARGA AUTOMÁTICA PARA VISOR ---
 if st.session_state.rol == "visor" and 'd_nc26_raw' not in st.session_state:
     with st.spinner("Sincronizando información en vivo desde la nube..."):
-        exito, msg = cargar_base_desde_sheets()
-        if exito: st.rerun()
+        ex, msg = cargar_base_desde_sheets()
+        if ex: st.rerun()
         else: st.error(f"Error de conexión: {msg}")
 
-# --- FILTRO GLOBAL (SIDEBAR) PARA TODOS ---
+# --- FILTRO GLOBAL Y CONTROLES (SIDEBAR) ---
 with st.sidebar:
-    st.header("⚙️ Filtro de Tiempo")
+    st.header("⚙️ Controles Globales")
     filtro_tiempo = st.selectbox("📅 Seleccione el período", ["Todo el Año", "Q1 (Ene-Mar)", "Q2 (Abr-Jun)", "Q3 (Jul-Sep)", "Q4 (Oct-Dic)", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"])
-    st.markdown("---")
     
-    # Opciones Admin
     if st.session_state.rol == "admin":
-        st.header("💾 Nube & Exportación")
+        st.markdown("---")
+        st.header("🗓️ Días Hábiles (Admin)")
+        if 'dias_habiles' not in st.session_state: st.session_state['dias_habiles'] = [20]*12
+        with st.expander("Modificar Días", expanded=False):
+            meses_n = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+            for i, m in enumerate(meses_n): st.session_state['dias_habiles'][i] = st.number_input(m, value=st.session_state['dias_habiles'][i], min_value=0, max_value=31, key=f"dia_{i}")
+
+        st.markdown("---")
+        st.header("💾 Exportación y Nube")
         if 'd_nc26_raw' in st.session_state:
-            excel_data = generar_excel_avanzado(st.session_state['d_nc26_raw'], st.session_state['d_v26_raw'])
-            st.download_button("📥 Descargar Reporte en Excel", data=excel_data, file_name="Reporte_Format_NC.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            excel_data = generar_excel_avanzado(st.session_state['d_nc26_raw'], st.session_state['d_v26_raw'], st.session_state['d_nc25_raw'], st.session_state['d_v25_raw'], st.session_state['dias_habiles'])
+            st.download_button("📥 Descargar Reporte Completo (Excel)", data=excel_data, file_name="Reporte_Format_NC.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             if st.button("☁️ Guardar Datos en la Nube", type="primary"):
                 with st.spinner("Sincronizando..."):
-                    dict_db = {"BD_NC_26": st.session_state['d_nc26_raw'], "BD_Ventas_26": st.session_state['d_v26_raw'], "BD_NC_25": st.session_state['d_nc25_raw'], "BD_Ventas_25": st.session_state['d_v25_raw']}
+                    dict_db = {"BD_NC_26": st.session_state['d_nc26_raw'], "BD_Ventas_26": st.session_state['d_v26_raw'], "BD_NC_25": st.session_state['d_nc25_raw'], "BD_Ventas_25": st.session_state['d_v25_raw'], "BD_Config": pd.DataFrame({'Dias': st.session_state['dias_habiles']})}
                     ex, msg = guardar_base_completa_en_sheets(dict_db)
                     if ex: st.success(msg)
                     else: st.error(msg)
@@ -218,22 +276,17 @@ with st.sidebar:
     st.markdown("---")
     if st.button("Cerrar Sesión"): st.session_state.rol = None; st.rerun()
 
-# --- APLICAR FILTRO GLOBAL A LOS DATOS ---
+# --- APLICAR FILTRO ---
 def filtrar_df(df, filtro):
     if filtro == "Todo el Año" or 'mes' not in df.columns: return df
     meses_map = {"Enero":1, "Febrero":2, "Marzo":3, "Abril":4, "Mayo":5, "Junio":6, "Julio":7, "Agosto":8, "Septiembre":9, "Octubre":10, "Noviembre":11, "Diciembre":12}
-    if filtro.startswith("Q"):
-        q = int(filtro[1])
-        return df[df['mes'].isin([q*3-2, q*3-1, q*3])]
+    if filtro.startswith("Q"): q = int(filtro[1]); return df[df['mes'].isin([q*3-2, q*3-1, q*3])]
     else: return df[df['mes'] == meses_map[filtro]]
 
 if 'd_nc26_raw' in st.session_state:
-    st.session_state['d_nc26'] = filtrar_df(st.session_state['d_nc26_raw'], filtro_tiempo)
-    st.session_state['d_v26'] = filtrar_df(st.session_state['d_v26_raw'], filtro_tiempo)
-    st.session_state['d_nc25'] = filtrar_df(st.session_state['d_nc25_raw'], filtro_tiempo)
-    st.session_state['d_v25'] = filtrar_df(st.session_state['d_v25_raw'], filtro_tiempo)
+    for k in ['d_nc26', 'd_v26', 'd_nc25', 'd_v25']: st.session_state[k] = filtrar_df(st.session_state[f'{k}_raw'], filtro_tiempo)
 
-# --- 📊 APLICACIÓN PRINCIPAL ---
+# --- 📊 DASHBOARD PRINCIPAL ---
 st.title(f"📊 Análisis de Reportes NC - {filtro_tiempo}")
 tab_analisis, tab_top10, tab_motivo, tab_error = st.tabs(["Dashboard", "Top 10 Clientes", "Motivos", "Error Carga"])
 
@@ -241,12 +294,12 @@ with tab_analisis:
     if st.session_state.rol == "admin":
         with st.expander("📂 Carga de Archivos Manual (Admin)", expanded=False):
             c1, c2, c3 = st.columns(3)
-            with c1: file_fcp = st.file_uploader("Facturación 2026", type=['xlsx'])
-            with c2: file_nc = st.file_uploader("Notas Crédito 2026", type=['xlsx'])
-            with c3: file_historico = st.file_uploader("Histórico 2025", type=['xlsx'])
+            with c1: f_fcp = st.file_uploader("Facturación 2026", type=['xlsx'])
+            with c2: f_nc = st.file_uploader("Notas Crédito 2026", type=['xlsx'])
+            with c3: f_h = st.file_uploader("Histórico 2025", type=['xlsx'])
             if st.button("Procesar Archivos"):
-                if file_fcp and file_nc and file_historico:
-                    df_v, df_n, df_h = pd.read_excel(file_fcp, header=2), pd.read_excel(file_nc, header=2), pd.read_excel(file_historico, header=2)
+                if f_fcp and f_nc and f_h:
+                    df_v, df_n, df_h = pd.read_excel(f_fcp, header=2), pd.read_excel(f_nc, header=2), pd.read_excel(f_h, header=2)
                     for d in [df_v, df_n, df_h]: d.columns = (d.columns.str.lower().str.strip().str.replace('ú', 'u').str.replace('í', 'i').str.replace('ó', 'o').str.replace('á', 'a').str.replace('é', 'e'))
                     df_v, df_n, df_h = df_v.drop_duplicates(subset=['numero']), df_n.drop_duplicates(subset=['numero']), df_h.drop_duplicates(subset=['numero'])
                     df_h['fecha'] = pd.to_datetime(df_h['fecha'], errors='coerce')
@@ -260,8 +313,6 @@ with tab_analisis:
     if 'd_nc26' in st.session_state and not st.session_state['d_nc26_raw'].empty:
         d26_raw, d25_raw = st.session_state['d_nc26_raw'], st.session_state['d_nc25_raw']
         v26_raw, v25_raw = st.session_state['d_v26_raw'], st.session_state['d_v25_raw']
-        
-        # Mismos cálculos que antes para el Dashboard principal, siempre sobre data cruda hasta max_mes
         max_mes = int(d26_raw['mes'].max()) if not d26_raw.empty else 12
         meses_activos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][:max_mes]
 
@@ -276,13 +327,12 @@ with tab_analisis:
 
         st.markdown("<h1 style='font-size: 3.5rem; font-weight: 900; color: #1a202c; margin-top: 10px; margin-bottom: 10px;'>2026</h1>", unsafe_allow_html=True)
         
-        # Si NO es Todo el Año, aplicamos la info del KPI filtrada, pero mantenemos el dashboard igual.
         if filtro_tiempo != "Todo el Año":
             t_nc, t_c = st.session_state['d_nc26']['importe total origen'].sum(), st.session_state['d_nc26']['numero'].count()
             k1, k2, k3 = st.columns([1, 1, 2])
             with k1: st.markdown(tarjeta_kpi(f"NC Emitidas ({filtro_tiempo})", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi(f"Monto Total ({filtro_tiempo})", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
-            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado del Top 10 Clientes, Motivos y Errores aplicando este filtro de tiempo. (El Dashboard principal muestra siempre el panorama Anual general).")
+            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado del Top 10 Clientes, Motivos y Errores aplicando este filtro de tiempo. (El Dashboard principal muestra el panorama Anual general).")
         else:
             t_nc, t_c = d26_calc['nc'].sum(), d26_calc['cantidad'].sum()
             k1, k2, k3 = st.columns([1, 1, 2])
@@ -342,10 +392,9 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
         
         if filtro_tiempo == "Todo el Año":
             st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo}</h2>", unsafe_allow_html=True)
-            
-            # Bloque Trimestre Actual (Q actual)
             t_actual = (df_crudo['mes'].max() - 1) // 3 + 1
             df_trim = df_crudo[df_crudo['trimestre'] == t_actual]
+            
             st.markdown(f"<h2>📅 Trimestre Actual (Q{int(t_actual)})</h2>", unsafe_allow_html=True)
             if col_agrupar in df_trim.columns and not df_trim.empty:
                 ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
@@ -358,7 +407,6 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
                     else: st.altair_chart(grafico_barras_v(ag_trim, col_agrupar, 'Cant'), use_container_width=True)
             else: st.info("No hay datos para este trimestre.")
 
-            # Bloque Acumulado
             st.markdown("<br><h2>📈 Acumulado Anual 2026</h2>", unsafe_allow_html=True)
             if col_agrupar in df_crudo.columns and not df_crudo.empty:
                 ag_acum = df_crudo.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('importe total origen', 'sum')).reset_index().sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
@@ -370,7 +418,6 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
                     elif tipo_grafico == "torta": st.altair_chart(grafico_torta(ag_acum, col_agrupar, 'Cant'), use_container_width=True)
                     else: st.altair_chart(grafico_barras_v(ag_acum, col_agrupar, 'Cant'), use_container_width=True)
         else:
-            # Vista Filtrada Específica
             df_filtrado = filtrar_df(df_crudo, filtro_tiempo)
             st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo} - {filtro_tiempo}</h2>", unsafe_allow_html=True)
             if col_agrupar in df_filtrado.columns and not df_filtrado.empty:
@@ -386,4 +433,4 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
 
     with tab_top10: armar_seccion(st.session_state['d_nc26_raw'], 'nombre cliente', "Análisis Top 10 Clientes", tipo_grafico="barras_h")
     with tab_motivo: armar_seccion(st.session_state['d_nc26_raw'], 'referencia 1', "Análisis de Motivos", tipo_grafico="torta")
-    with tab_error: armar_seccion(st.session_state['d_nc26_raw'], 'cobrador cliente', "Análisis de Error de Carga", es_error=True, tipo_grafico="barras_v")
+    with tab_error: armar_seccion(st.session_state['d_nc26_raw'], 'cobrador cliente', "Análisis de Cobrador", es_error=True, tipo_grafico="barras_v")
