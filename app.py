@@ -107,13 +107,14 @@ def guardar_en_sheets(df, nombre_hoja):
         creds = ServiceAccountCredentials.from_json_keyfile_dict(st.secrets["gcp_service_account"], scope)
         client = gspread.authorize(creds)
         
-        # Necesitas poner el ID de tu Google Sheet aquí (la parte larga de la URL de tu sheet)
+              # Necesitas poner el ID de tu Google Sheet aquí
         ID_DEL_SHEET = "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY" 
-        if ID_DEL_SHEET == "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY":
+        
+        if not ID_DEL_SHEET:
             return False, "Falta configurar el ID_DEL_SHEET en el código."
 
         sheet = client.open_by_key(ID_DEL_SHEET)
-        
+           
         try:
             worksheet = sheet.worksheet(nombre_hoja)
             worksheet.clear()
