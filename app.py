@@ -108,8 +108,8 @@ def guardar_en_sheets(df, nombre_hoja):
         client = gspread.authorize(creds)
         
         # Necesitas poner el ID de tu Google Sheet aquí (la parte larga de la URL de tu sheet)
-        ID_DEL_SHEET = "REEMPLAZAR_CON_TU_ID_DE_SHEET" 
-        if ID_DEL_SHEET == "REEMPLAZAR_CON_TU_ID_DE_SHEET":
+        ID_DEL_SHEET = "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY" 
+        if ID_DEL_SHEET == "101j4mRqe6KPhM1htOKqHJxYUKcTalDHosEZF-MalrPY":
             return False, "Falta configurar el ID_DEL_SHEET en el código."
 
         sheet = client.open_by_key(ID_DEL_SHEET)
