@@ -53,7 +53,16 @@ with st.sidebar:
 def parse_amount(val):
     if pd.isna(val): return 0.0
     if isinstance(val, (int, float)): return float(val)
-    s = str(val).replace('$', '').strip()
+    s = str(val).strip()
+    
+    # Detectar si es negativo (guion o paréntesis contable)
+    is_negative = '-' in s or (s.startswith('(') and s.endswith(')'))
+    
+    # Dejar solo números, puntos y comas
+    s = re.sub(r'[^\d,\.]', '', s)
+    if not s: return 0.0
+    
+    # Formateo latino a decimal de Python
     if ',' in s and '.' in s:
         if s.find('.') < s.find(','):
             s = s.replace('.', '').replace(',', '.')
@@ -61,8 +70,10 @@ def parse_amount(val):
             s = s.replace(',', '')
     elif ',' in s:
         s = s.replace(',', '.')
+        
     try:
-        return float(s)
+        num = float(s)
+        return -num if is_negative else num
     except:
         return 0.0
 
@@ -86,15 +97,14 @@ def process_excel(file):
     header_idx = -1
     cols = {'sujeto': -1, 'fecha': -1, 'subdiario': -1, 'importe': -1}
     
-    # Buscar títulos en las primeras 15 filas
     for i in range(min(15, len(df_raw))):
         row = df_raw.iloc[i].apply(normalize_text)
         
-        # Ampliamos las palabras de búsqueda por si el Excel las exportó distinto
-        s_idx = row[row.str.contains('sujeto|cliente|razon social')].index
-        f_idx = row[row.str.contains('fecha|emision')].index
-        d_idx = row[row.str.contains('subdiario|tipo|comprobante')].index
-        i_idx = row[row.str.contains('importe|saldo|total')].index
+        # BÚSQUEDA CORREGIDA (Ya no confunde 'Tipo' con 'Subdiario')
+        s_idx = row[row.str.contains('sujeto|cliente')].index
+        f_idx = row[row.str.contains('fecha_1|fecha')].index
+        d_idx = row[row.str.contains('subdiario')].index
+        i_idx = row[row.str.contains('importe local|importe|saldo')].index
         
         if len(s_idx) > 0 and len(f_idx) > 0 and len(d_idx) > 0:
             header_idx = i
@@ -105,17 +115,16 @@ def process_excel(file):
                 cols['importe'] = i_idx[0]
             break
 
-    debug_df = df_raw.head(15).astype(str) # Guardamos los primeros datos para el modo diagnóstico
+    debug_df = df_raw.head(15).astype(str) 
 
     if header_idx == -1:
-        return None, "Error: No encontré los títulos principales (Sujeto, Fecha, Subdiario) en las primeras 15 filas.", debug_df
+        return None, "Error: No encontré los títulos principales (Sujeto, Fecha, Subdiario) en las primeras filas.", debug_df
     if cols['importe'] == -1:
-        return None, "Error: Encontré Sujeto y Fecha, pero falta la columna de Importe / Saldo.", debug_df
+        return None, "Error: Encontré Sujeto y Fecha, pero falta la columna de Importe.", debug_df
 
-    # Extraer datos reales
     df_data = df_raw.iloc[header_idx+1:].copy()
     
-    # Intentar parsear las fechas (con múltiples formatos por si acaso)
+    # Parseo de Fechas
     fechas = pd.to_datetime(df_data.iloc[:, cols['fecha']], errors='coerce')
     if fechas.isna().all():
         fechas = pd.to_datetime(df_data.iloc[:, cols['fecha']], format='%d/%m/%Y', errors='coerce')
@@ -132,8 +141,11 @@ def process_excel(file):
     df_clean['Tipo'] = np.where(df_clean['Subdiario'].str.contains('VTA'), 'Factura / NC', 
                        np.where(df_clean['Subdiario'].str.contains('COB'), 'Recibo', 'Otro'))
     
+    # Filtrar solo VTA y COB reales para que no guarde basura
+    df_clean = df_clean[df_clean['Subdiario'].str.contains('VTA|COB')]
+    
     if len(df_clean) == 0:
-        return None, "Detecté las columnas bien, pero todas las filas de datos fallaron (tal vez por error en el formato de la Fecha o el Importe).", debug_df
+        return None, "Detecté las columnas, pero no hubo facturas (VTA) ni recibos (COB) válidos.", debug_df
         
     return df_clean, "OK", None
 
@@ -151,9 +163,11 @@ def evaluate_client_fifo(df_client):
         
         if 'VTA' in subdiario:
             if importe > 0:
+                # FACTURA NORMAL
                 total_billed += importe
                 invoice_queue.append({'fecha': fecha, 'saldo': importe})
             else:
+                # NOTA DE CRÉDITO
                 payment_rem = abs(importe)
                 while invoice_queue and payment_rem > 0.001:
                     inv = invoice_queue[0]
@@ -251,12 +265,12 @@ if uploaded_file:
             
             if df is not None:
                 st.session_state.df_base = df
-                st.success(f"¡Archivo procesado con éxito! ({len(df)} movimientos)")
+                st.success(f"¡Archivo procesado con éxito! ({len(df)} movimientos contabilizados)")
                 st.rerun() 
             else:
                 st.error(status) 
                 if debug_df is not None:
-                    st.warning("🔍 MODO DIAGNÓSTICO: Esto es lo que el programa logró leer de tu Excel en crudo. Fíjate si ves los títulos que necesitamos (Sujeto, Fecha, Subdiario, Importe):")
+                    st.warning("🔍 MODO DIAGNÓSTICO: Esto es lo que logré leer. Verificá los encabezados.")
                     st.dataframe(debug_df)
 
 if "df_base" in st.session_state:
