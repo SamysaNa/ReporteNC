@@ -39,7 +39,6 @@ if st.session_state.role is None:
                     st.error("Credenciales incorrectas")
     st.stop()
 
-# Botón de cierre de sesión
 with st.sidebar:
     st.markdown(f"**Usuario:** {st.session_state.role.upper()}")
     if st.button("Cerrar Sesión"):
@@ -55,14 +54,10 @@ def parse_amount(val):
     if isinstance(val, (int, float)): return float(val)
     s = str(val).strip()
     
-    # Detectar si es negativo (guion o paréntesis contable)
     is_negative = '-' in s or (s.startswith('(') and s.endswith(')'))
-    
-    # Dejar solo números, puntos y comas
     s = re.sub(r'[^\d,\.]', '', s)
     if not s: return 0.0
     
-    # Formateo latino a decimal de Python
     if ',' in s and '.' in s:
         if s.find('.') < s.find(','):
             s = s.replace('.', '').replace(',', '.')
@@ -80,72 +75,56 @@ def parse_amount(val):
 def clean_client_name(name):
     return re.sub(r'^\d+[-\s]*', '', str(name)).strip()
 
-def normalize_text(val):
-    if pd.isna(val): return ""
-    s = str(val).lower()
-    for a, b in zip(['á','é','í','ó','ú'], ['a','e','i','o','u']):
-        s = s.replace(a, b)
-    return s.strip()
-
 @st.cache_data
 def process_excel(file):
     try:
-        df_raw = pd.read_excel(file, header=None)
+        # header=2 salta la fila 0 y 1, y toma la 3ra fila como encabezado directamente
+        df_raw = pd.read_excel(file, header=2)
     except Exception as e:
-        return None, f"Error grave al leer el archivo Excel: {str(e)}", None
+        return None, f"Error al leer el archivo Excel: {str(e)}", None
 
-    header_idx = -1
-    cols = {'sujeto': -1, 'fecha': -1, 'subdiario': -1, 'importe': -1}
+    cols_lower = [str(c).lower().strip() for c in df_raw.columns]
     
-    for i in range(min(15, len(df_raw))):
-        row = df_raw.iloc[i].apply(normalize_text)
+    col_sujeto = -1
+    col_fecha = -1
+    col_subdiario = -1
+    col_importe = -1
+    
+    # Buscar índices de columnas por nombre
+    for i, c in enumerate(cols_lower):
+        if 'sujeto' in c or 'cliente' in c: col_sujeto = i
+        elif 'fecha' in c: col_fecha = i
+        elif 'subdiario' in c: col_subdiario = i
+        elif 'importe' in c or 'saldo' in c or 'local' in c: col_importe = i
         
-        # BÚSQUEDA CORREGIDA (Ya no confunde 'Tipo' con 'Subdiario')
-        s_idx = row[row.str.contains('sujeto|cliente')].index
-        f_idx = row[row.str.contains('fecha_1|fecha')].index
-        d_idx = row[row.str.contains('subdiario')].index
-        i_idx = row[row.str.contains('importe local|importe|saldo')].index
-        
-        if len(s_idx) > 0 and len(f_idx) > 0 and len(d_idx) > 0:
-            header_idx = i
-            cols['sujeto'] = s_idx[0]
-            cols['fecha'] = f_idx[0]
-            cols['subdiario'] = d_idx[0]
-            if len(i_idx) > 0: 
-                cols['importe'] = i_idx[0]
-            break
+    if col_sujeto == -1 or col_fecha == -1 or col_subdiario == -1 or col_importe == -1:
+        debug_info = pd.DataFrame({"Columnas Detectadas": list(df_raw.columns)})
+        return None, "Error: No se detectaron los títulos (Sujeto, Fecha, Subdiario, Importe) en la Fila 3.", debug_info
 
-    debug_df = df_raw.head(15).astype(str) 
-
-    if header_idx == -1:
-        return None, "Error: No encontré los títulos principales (Sujeto, Fecha, Subdiario) en las primeras filas.", debug_df
-    if cols['importe'] == -1:
-        return None, "Error: Encontré Sujeto y Fecha, pero falta la columna de Importe.", debug_df
-
-    df_data = df_raw.iloc[header_idx+1:].copy()
+    # Filtrar solo las columnas que necesitamos
+    df_data = df_raw.iloc[:, [col_sujeto, col_fecha, col_subdiario, col_importe]].copy()
+    df_data.columns = ['Sujeto_Original', 'Fecha', 'Subdiario', 'Importe']
     
-    # Parseo de Fechas
-    fechas = pd.to_datetime(df_data.iloc[:, cols['fecha']], errors='coerce')
-    if fechas.isna().all():
-        fechas = pd.to_datetime(df_data.iloc[:, cols['fecha']], format='%d/%m/%Y', errors='coerce')
-
-    df_clean = pd.DataFrame({
-        'Sujeto_Original': df_data.iloc[:, cols['sujeto']].astype(str).replace('nan', np.nan),
-        'Fecha': fechas,
-        'Subdiario': df_data.iloc[:, cols['subdiario']].astype(str).str.upper(),
-        'Importe': df_data.iloc[:, cols['importe']].apply(parse_amount)
-    }).dropna(subset=['Sujeto_Original', 'Fecha'])
+    # Limpiar filas completamente vacías
+    df_data = df_data.dropna(subset=['Sujeto_Original', 'Subdiario'])
     
-    df_clean = df_clean[df_clean['Importe'] != 0]
-    df_clean['Sujeto'] = df_clean['Sujeto_Original'].apply(clean_client_name)
-    df_clean['Tipo'] = np.where(df_clean['Subdiario'].str.contains('VTA'), 'Factura / NC', 
-                       np.where(df_clean['Subdiario'].str.contains('COB'), 'Recibo', 'Otro'))
+    # Forzar formato fecha
+    if not pd.api.types.is_datetime64_any_dtype(df_data['Fecha']):
+        df_data['Fecha'] = pd.to_datetime(df_data['Fecha'], errors='coerce')
+    df_data = df_data.dropna(subset=['Fecha']) 
     
-    # Filtrar solo VTA y COB reales para que no guarde basura
-    df_clean = df_clean[df_clean['Subdiario'].str.contains('VTA|COB')]
+    # Formateo de Importes y Textos
+    df_data['Importe'] = df_data['Importe'].apply(parse_amount)
+    df_data = df_data[df_data['Importe'] != 0]
+    df_data['Sujeto'] = df_data['Sujeto_Original'].apply(clean_client_name)
+    df_data['Subdiario'] = df_data['Subdiario'].astype(str).str.upper()
+    
+    # Filtrar SOLO movimientos relevantes
+    df_clean = df_data[df_data['Subdiario'].str.contains('VTA|COB')].copy()
     
     if len(df_clean) == 0:
-        return None, "Detecté las columnas, pero no hubo facturas (VTA) ni recibos (COB) válidos.", debug_df
+        debug_info = df_data.head(15).astype(str)
+        return None, "Se leyeron las columnas pero no se detectaron facturas (VTA) ni recibos (COB) válidos.", debug_info
         
     return df_clean, "OK", None
 
@@ -163,11 +142,9 @@ def evaluate_client_fifo(df_client):
         
         if 'VTA' in subdiario:
             if importe > 0:
-                # FACTURA NORMAL
                 total_billed += importe
                 invoice_queue.append({'fecha': fecha, 'saldo': importe})
-            else:
-                # NOTA DE CRÉDITO
+            else: # Nota de Crédito
                 payment_rem = abs(importe)
                 while invoice_queue and payment_rem > 0.001:
                     inv = invoice_queue[0]
@@ -270,7 +247,7 @@ if uploaded_file:
             else:
                 st.error(status) 
                 if debug_df is not None:
-                    st.warning("🔍 MODO DIAGNÓSTICO: Esto es lo que logré leer. Verificá los encabezados.")
+                    st.warning("🔍 MODO DIAGNÓSTICO:")
                     st.dataframe(debug_df)
 
 if "df_base" in st.session_state:
