@@ -145,7 +145,8 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     agregar_hoja("Top 10 Clientes", "nombre cliente", "bar", df_nc, top_n=10)
     agregar_hoja("Motivos", "referencia 1", "pie", df_nc, top_n=None)
     
-    df_err = df_nc[df_nc['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if not df_nc.empty and 'referencia 1' in df_nc.columns else pd.DataFrame()
+    # Filtro exacto ignorando espacios ("ERRORCARGA" y "ERROR DE CARGA" se agrupan juntos)
+    df_err = df_nc[df_nc['referencia 1'].astype(str).str.replace(' ', '').str.upper() == 'ERRORCARGA'] if not df_nc.empty and 'referencia 1' in df_nc.columns else pd.DataFrame()
     if not df_err.empty: agregar_hoja("Error Carga", "cobrador cliente", "column", df_err, top_n=None)
 
     workbook.close()
@@ -329,6 +330,7 @@ with tab_analisis:
                         df_new.columns = df_new.columns.str.lower().str.strip().str.replace('ú', 'u').str.replace('í', 'i').str.replace('ó', 'o').str.replace('á', 'a').str.replace('é', 'e')
                         df_new['fecha'] = pd.to_datetime(df_new['fecha'], errors='coerce')
                         df_new = df_new[df_new['fecha'] >= '2025-01-01']
+                        
                         if 'tipo' in df_new.columns:
                             tipos_nc_nd = ('C10', 'C11', 'C12', 'C14', 'C16', 'CA2', 'CA3', 'CA4', 'CA6', 'CA7', 'CA8', 'CA9', 'CAC', 'CAE', 'CB3', 'DA1', 'DA2', 'DA3', 'NC2', 'NC3', 'NC6', 'NC7', 'NC8', 'NCC')
                             mask_nc = df_new['tipo'].astype(str).str.strip().str.upper().str.startswith(tipos_nc_nd)
@@ -427,7 +429,8 @@ with tab_analisis:
 if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty:
     
     def armar_seccion(df_crudo, col_agrupar, titulo, es_error=False, tipo_grafico="barras_h", top_n=None):
-        if es_error: df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if 'referencia 1' in df_crudo.columns else df_crudo
+        # Filtro agnóstico que elimina espacios y unifica ambos textos
+        if es_error: df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.replace(' ', '').str.upper() == 'ERRORCARGA'] if 'referencia 1' in df_crudo.columns else df_crudo
         
         if filtro_tiempo == "Todo el Año":
             st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo}</h2>", unsafe_allow_html=True)
