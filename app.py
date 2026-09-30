@@ -9,13 +9,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 st.set_page_config(page_title="Reporte NC Mundi SA", layout="wide")
 
-# --- ESTILOS CSS REFORZADOS Y RESPONSIVOS (PARA CELULARES) ---
+# --- ESTILOS CSS REFORZADOS Y RESPONSIVOS ---
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
 html, body, [class*="css"] { font-family: 'Nunito', sans-serif !important; }
 
-/* Solapas adaptables */
 button[role="tab"] { background-color: transparent !important; border: none !important; border-bottom: 4px solid transparent !important; padding-bottom: 5px !important; margin-right: 15px !important; }
 button[role="tab"] p { font-size: 1.1rem !important; font-weight: 900 !important; color: #a0aec0 !important; transition: all 0.2s ease; }
 button[role="tab"][aria-selected="true"] { border-bottom: 4px solid #ff4b4b !important; }
@@ -54,7 +53,6 @@ details[open] summary { border-radius: 8px 8px 0 0; border-bottom: 1px dashed #e
 .tabla-interna th { color: #a0aec0; font-weight: 900; text-transform: uppercase; text-align: left; padding: 4px 8px; border-bottom: 2px solid #e2e8f0; font-size: 0.7rem; }
 .tabla-interna td { color: #4a5568; font-weight: 700; text-align: left; padding: 4px 8px; border-bottom: 1px solid #edf2f7; }
 
-/* Ajustes para pantallas pequeñas (Celulares) */
 @media (max-width: 768px) {
     button[role="tab"] { margin-right: 5px !important; padding-bottom: 2px !important; }
     button[role="tab"] p { font-size: 0.9rem !important; }
@@ -87,7 +85,6 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
         df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
         df_v['mes'] = pd.to_datetime(df_v['fecha']).dt.month
         
-        # SUMA BRUTA PRIMERO, ABSOLUTO DESPUÉS
         v_m = df_v.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'Ventas'})
         nc_m = df_nc.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'Monto NC'})
         nc_c = df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'Cantidad'})
@@ -119,7 +116,6 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
         ws = workbook.add_worksheet(nombre)
         ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
         
-        # SUMA BRUTA PRIMERO, ABSOLUTO DESPUÉS
         ag = df_base.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
         ag['Total'] = ag['Total'].abs()
         ag = ag.sort_values('Cantidad', ascending=False).head(10).reset_index(drop=True)
@@ -186,7 +182,7 @@ def cargar_base_desde_sheets():
         try: st.session_state['dias_habiles'] = pd.DataFrame(sheet_doc.worksheet("BD_Config").get_all_records())['Dias'].tolist()
         except: pass
         for key in ['d_nc26_raw', 'd_v26_raw', 'd_nc25_raw', 'd_v25_raw']:
-            if 'fecha' in st.session_state[key].columns:
+            if not st.session_state[key].empty and 'fecha' in st.session_state[key].columns:
                 st.session_state[key]['fecha'] = pd.to_datetime(st.session_state[key]['fecha'], errors='coerce')
                 st.session_state[key]['mes'] = st.session_state[key]['fecha'].dt.month
                 st.session_state[key]['trimestre'] = (st.session_state[key]['mes'] - 1) // 3 + 1
@@ -229,7 +225,6 @@ def render_lista(df_agrupado, df_crudo, col_titulo, cols_datos, ranking=False, d
             html += "<div class='detalle-contenido'><table class='tabla-interna'><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Monto Bruto</th></tr>"
             for _, det_row in df_det.iterrows():
                 f_str = det_row['fecha'].strftime('%d/%m/%Y') if pd.notnull(det_row['fecha']) else ''
-                # El valor original mantiene su signo para que el contador vea cómo se compone
                 html += f"<tr><td>{f_str}</td><td>{det_row.get('numero', '')}</td><td>{det_row.get('nombre cliente', '')}</td><td>$ {formato_arg(det_row.get('total bruto origen', 0))}</td></tr>"
             html += "</table></div></details>"
         else: html += "</div></div>"
@@ -251,11 +246,11 @@ if not st.session_state.rol:
         else: st.error("Clave incorrecta.")
     st.stop() 
 
-if st.session_state.rol == "visor" and 'd_nc26_raw' not in st.session_state:
+# AMBOS ROLES CARGAN LA INFO AL ENTRAR
+if 'd_nc26_raw' not in st.session_state:
     with st.spinner("Sincronizando información en vivo desde la nube..."):
         ex, msg = cargar_base_desde_sheets()
         if ex: st.rerun()
-        else: st.error(f"Error de conexión: {msg}")
 
 # --- FILTRO GLOBAL Y CONTROLES (SIDEBAR) ---
 with st.sidebar:
@@ -272,7 +267,7 @@ with st.sidebar:
 
         st.markdown("---")
         st.header("💾 Exportación y Nube")
-        if 'd_nc26_raw' in st.session_state:
+        if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty:
             excel_data = generar_excel_avanzado(st.session_state['d_nc26_raw'], st.session_state['d_v26_raw'], st.session_state['d_nc25_raw'], st.session_state['d_v25_raw'], st.session_state['dias_habiles'])
             st.download_button("📥 Descargar Reporte Completo (Excel)", data=excel_data, file_name="Reporte_Format_NC.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             if st.button("☁️ Guardar Datos en la Nube", type="primary"):
@@ -292,7 +287,7 @@ def filtrar_df(df, filtro):
     if filtro.startswith("Q"): q = int(filtro[1]); return df[df['mes'].isin([q*3-2, q*3-1, q*3])]
     else: return df[df['mes'] == meses_map[filtro]]
 
-if 'd_nc26_raw' in st.session_state:
+if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty:
     for k in ['d_nc26', 'd_v26', 'd_nc25', 'd_v25']: st.session_state[k] = filtrar_df(st.session_state[f'{k}_raw'], filtro_tiempo)
 
 # --- 📊 DASHBOARD PRINCIPAL ---
@@ -303,31 +298,53 @@ tab_analisis, tab_top10, tab_motivo, tab_error = st.tabs(["Resumen", "Top 10 Cli
 
 with tab_analisis:
     if st.session_state.rol == "admin":
-        with st.expander("📂 Carga de Archivos Manual (Admin)", expanded=False):
+        with st.expander("📂 Carga de Archivos Manual (Agregar Datos)", expanded=False):
+            st.info("Sube solo los archivos nuevos. El sistema los pegará al final de los datos que ya están en la nube.")
             c1, c2, c3 = st.columns(3)
-            with c1: f_fcp = st.file_uploader("Facturación 2026", type=['xlsx'])
-            with c2: f_nc = st.file_uploader("Notas Crédito 2026", type=['xlsx'])
-            with c3: f_h = st.file_uploader("Histórico 2025", type=['xlsx'])
-            if st.button("Procesar Archivos"):
-                if f_fcp and f_nc and f_h:
-                    df_v, df_n, df_h = pd.read_excel(f_fcp, header=2), pd.read_excel(f_nc, header=2), pd.read_excel(f_h, header=2)
-                    for d in [df_v, df_n, df_h]: d.columns = (d.columns.str.lower().str.strip().str.replace('ú', 'u').str.replace('í', 'i').str.replace('ó', 'o').str.replace('á', 'a').str.replace('é', 'e'))
-                    df_v, df_n, df_h = df_v.drop_duplicates(subset=['numero']), df_n.drop_duplicates(subset=['numero']), df_h.drop_duplicates(subset=['numero'])
-                    df_h['fecha'] = pd.to_datetime(df_h['fecha'], errors='coerce')
-                    df_h = df_h[df_h['fecha'] >= '2025-01-01']
+            with c1: f_fcp = st.file_uploader("Facturación (Nuevas)", type=['xlsx'])
+            with c2: f_nc = st.file_uploader("Notas Crédito (Nuevas)", type=['xlsx'])
+            with c3: f_h = st.file_uploader("Histórico 2025 (Opcional)", type=['xlsx'])
+            
+            if st.button("Procesar y Agregar Archivos"):
+                if f_fcp or f_nc or f_h:
+                    df_v_exist = st.session_state.get('d_v26_raw', pd.DataFrame())
+                    df_n_exist = st.session_state.get('d_nc26_raw', pd.DataFrame())
+                    df_nc25_exist = st.session_state.get('d_nc25_raw', pd.DataFrame())
+                    df_v25_exist = st.session_state.get('d_v25_raw', pd.DataFrame())
+
+                    if f_fcp:
+                        df_new = pd.read_excel(f_fcp, header=2)
+                        df_new.columns = df_new.columns.str.lower().str.strip().str.replace('ú', 'u').str.replace('í', 'i').str.replace('ó', 'o').str.replace('á', 'a').str.replace('é', 'e')
+                        df_v_exist = pd.concat([df_v_exist, df_new]).drop_duplicates(subset=['numero'], keep='last')
                     
-                    # FILTRO EXACTO PARA 2025
-                    if 'tipo' in df_h.columns:
-                        tipos_nc_nd = ('C10', 'C11', 'C12', 'C14', 'C16', 'CA2', 'CA3', 'CA4', 'CA6', 'CA7', 'CA8', 'CA9', 'CAC', 'CAE', 'CB3', 'DA1', 'DA2', 'DA3', 'NC2', 'NC3', 'NC6', 'NC7', 'NC8', 'NCC')
-                        mask_nc = df_h['tipo'].astype(str).str.strip().str.upper().str.startswith(tipos_nc_nd)
-                        df_h_nc = df_h[mask_nc]
-                        df_h_v = df_h[~mask_nc]
-                    else:
-                        df_h_nc, df_h_v = df_h, pd.DataFrame(columns=df_h.columns)
+                    if f_nc:
+                        df_new = pd.read_excel(f_nc, header=2)
+                        df_new.columns = df_new.columns.str.lower().str.strip().str.replace('ú', 'u').str.replace('í', 'i').str.replace('ó', 'o').str.replace('á', 'a').str.replace('é', 'e')
+                        df_n_exist = pd.concat([df_n_exist, df_new]).drop_duplicates(subset=['numero'], keep='last')
+                        
+                    if f_h:
+                        df_new = pd.read_excel(f_h, header=2)
+                        df_new.columns = df_new.columns.str.lower().str.strip().str.replace('ú', 'u').str.replace('í', 'i').str.replace('ó', 'o').str.replace('á', 'a').str.replace('é', 'e')
+                        df_new['fecha'] = pd.to_datetime(df_new['fecha'], errors='coerce')
+                        df_new = df_new[df_new['fecha'] >= '2025-01-01']
+                        if 'tipo' in df_new.columns:
+                            tipos_nc_nd = ('C10', 'C11', 'C12', 'C14', 'C16', 'CA2', 'CA3', 'CA4', 'CA6', 'CA7', 'CA8', 'CA9', 'CAC', 'CAE', 'CB3', 'DA1', 'DA2', 'DA3', 'NC2', 'NC3', 'NC6', 'NC7', 'NC8', 'NCC')
+                            mask_nc = df_new['tipo'].astype(str).str.strip().str.upper().str.startswith(tipos_nc_nd)
+                            df_nc25_exist = pd.concat([df_nc25_exist, df_new[mask_nc]]).drop_duplicates(subset=['numero'], keep='last')
+                            df_v25_exist = pd.concat([df_v25_exist, df_new[~mask_nc]]).drop_duplicates(subset=['numero'], keep='last')
+
+                    st.session_state['d_nc26_raw'], st.session_state['d_v26_raw'] = df_n_exist, df_v_exist
+                    st.session_state['d_nc25_raw'], st.session_state['d_v25_raw'] = df_nc25_exist, df_v25_exist
                     
-                    st.session_state['d_nc26_raw'], st.session_state['d_v26_raw'], st.session_state['d_nc25_raw'], st.session_state['d_v25_raw'] = df_n, df_v, df_h_nc, df_h_v
-                    for key in ['d_nc26_raw', 'd_v26_raw', 'd_nc25_raw', 'd_v25_raw']: st.session_state[key]['fecha'] = pd.to_datetime(st.session_state[key]['fecha'], errors='coerce'); st.session_state[key]['mes'] = st.session_state[key]['fecha'].dt.month; st.session_state[key]['trimestre'] = (st.session_state[key]['mes'] - 1) // 3 + 1
+                    for key in ['d_nc26_raw', 'd_v26_raw', 'd_nc25_raw', 'd_v25_raw']: 
+                        if not st.session_state[key].empty:
+                            st.session_state[key]['fecha'] = pd.to_datetime(st.session_state[key]['fecha'], errors='coerce')
+                            st.session_state[key]['mes'] = st.session_state[key]['fecha'].dt.month
+                            st.session_state[key]['trimestre'] = (st.session_state[key]['mes'] - 1) // 3 + 1
+                    
+                    st.success("Archivos procesados correctamente. Haz clic en 'Guardar Datos en la Nube' para finalizar.")
                     st.rerun()
+                else: st.warning("Sube al menos un archivo para procesar.")
 
     if 'd_nc26' in st.session_state and not st.session_state['d_nc26_raw'].empty:
         d26_raw, d25_raw = st.session_state['d_nc26_raw'], st.session_state['d_nc25_raw']
@@ -338,7 +355,6 @@ with tab_analisis:
 
         def calc_m(df_v, df_nc, max_m):
             c = pd.DataFrame({'mes': range(1, max_m+1)})
-            # SUMA BRUTA PRIMERO, ABSOLUTO DESPUÉS
             c = c.merge(df_v.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'ventas'}), on='mes', how='left')
             c = c.merge(df_nc.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'nc'}), on='mes', how='left')
             c = c.merge(df_nc.groupby('mes')['numero'].count().reset_index(), on='mes', how='left').rename(columns={'numero': 'cantidad'})
@@ -418,7 +434,6 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
             
             st.markdown(f"<h2>📅 Trimestre Actual (Q{int(t_actual)})</h2>", unsafe_allow_html=True)
             if col_agrupar in df_trim.columns and not df_trim.empty:
-                # SUMA BRUTA PRIMERO, ABSOLUTO DESPUÉS
                 ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
                 ag_trim['Total'] = ag_trim['Total'].abs()
                 ag_trim = ag_trim.sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
