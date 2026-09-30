@@ -174,6 +174,18 @@ def guardar_base_completa_en_sheets(dict_dfs):
         return True, "Base de datos sincronizada en la nube."
     except Exception as e: return False, str(e)
 
+def limpiar_historial_sheets():
+    sheet_doc, msg = conectar_google()
+    if not sheet_doc: return False, msg
+    try:
+        for hoja in ["BD_NC_26", "BD_Ventas_26", "BD_NC_25", "BD_Ventas_25"]:
+            try: 
+                worksheet = sheet_doc.worksheet(hoja)
+                worksheet.clear()
+            except: pass
+        return True, "Historial borrado exitosamente. Ya puedes subir los archivos limpios."
+    except Exception as e: return False, str(e)
+
 def cargar_base_desde_sheets():
     sheet_doc, msg = conectar_google()
     if not sheet_doc: return False, msg
@@ -279,6 +291,15 @@ with st.sidebar:
                     ex, msg = guardar_base_completa_en_sheets(dict_db)
                     if ex: st.success(msg)
                     else: st.error(msg)
+
+            if st.button("🗑️ Borrar Historial Nube (Reiniciar)"):
+                with st.spinner("Borrando..."):
+                    ex, msg = limpiar_historial_sheets()
+                    if ex:
+                        st.session_state.pop('d_nc26_raw', None)
+                        st.session_state.pop('d_nc25_raw', None)
+                        st.success("Historial borrado.")
+                        st.rerun()
     
     st.markdown("---")
     if st.button("Cerrar Sesión"): st.session_state.rol = None; st.rerun()
@@ -373,7 +394,7 @@ with tab_analisis:
             k1, k2, k3 = st.columns([1, 1, 2])
             with k1: st.markdown(tarjeta_kpi(f"NC Emitidas ({filtro_tiempo})", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi(f"Monto Total ({filtro_tiempo})", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
-            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado aplicando este filtro de tiempo.")
+            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado aplicando este filtro de tiempo. (El Dashboard principal muestra el panorama Anual general).")
         else:
             t_nc, t_c = d26_calc['nc'].sum(), d26_calc['cantidad'].sum()
             k1, k2, k3 = st.columns([1, 1, 2])
@@ -429,13 +450,15 @@ with tab_analisis:
 if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty:
     
     def armar_seccion(df_crudo, col_agrupar, titulo, es_error=False, tipo_grafico="barras_h", top_n=None):
-        # Filtro agnóstico que elimina espacios y unifica ambos textos
-        if es_error: df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.replace(' ', '').str.upper() == 'ERRORCARGA'] if 'referencia 1' in df_crudo.columns else df_crudo
+        if es_error: 
+            # Filtrar si la columna existe. Permite "ERROR DE CARGA" en vez de romperse.
+            if 'referencia 1' in df_crudo.columns:
+                df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.upper() == 'ERROR DE CARGA']
         
         if filtro_tiempo == "Todo el Año":
             st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo}</h2>", unsafe_allow_html=True)
-            t_actual = (df_crudo['mes'].max() - 1) // 3 + 1
-            df_trim = df_crudo[df_crudo['trimestre'] == t_actual]
+            t_actual = (df_crudo['mes'].max() - 1) // 3 + 1 if not df_crudo.empty and 'mes' in df_crudo.columns else 1
+            df_trim = df_crudo[df_crudo['trimestre'] == t_actual] if not df_crudo.empty and 'trimestre' in df_crudo.columns else pd.DataFrame()
             
             st.markdown(f"<h2>📅 Trimestre Actual (Q{int(t_actual)})</h2>", unsafe_allow_html=True)
             if col_agrupar in df_trim.columns and not df_trim.empty:
