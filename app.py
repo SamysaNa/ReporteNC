@@ -111,16 +111,14 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     chart_res.set_title({'name': 'Comparativa Mensual (Ventas vs NC)'})
     ws_res.insert_chart('G3', chart_res)
         
-    def agregar_hoja(nombre, col_agrupar, tipo_grafico, df_base, top_n=None):
+    def agregar_hoja(nombre, col_agrupar, tipo_grafico, df_base):
         if df_base.empty or col_agrupar not in df_base.columns: return
         ws = workbook.add_worksheet(nombre)
         ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
         
         ag = df_base.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
         ag['Total'] = ag['Total'].abs()
-        ag = ag.sort_values('Cantidad', ascending=False)
-        if top_n: ag = ag.head(top_n)
-        ag = ag.reset_index(drop=True)
+        ag = ag.sort_values('Cantidad', ascending=False).head(10).reset_index(drop=True)
         
         ws.write(2, 0, col_agrupar.upper(), fmt_header)
         ws.write(2, 1, "CANT", fmt_header)
@@ -137,17 +135,16 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
             'name': 'Cantidad',
             'categories': [nombre, 3, 0, len(ag)+2, 0],
             'values':     [nombre, 3, 1, len(ag)+2, 1],
-            'points':     [{'fill': {'color': PALETA_COLORES[i % len(PALETA_COLORES)]}} for i in range(len(ag))]
+            'points':     [{'fill': {'color': c}} for c in PALETA_COLORES[:len(ag)]]
         })
         if tipo_grafico != 'pie': chart.set_legend({'none': True})
         ws.insert_chart('E3', chart)
 
-    agregar_hoja("Top 10 Clientes", "nombre cliente", "bar", df_nc, top_n=10)
-    agregar_hoja("Motivos", "referencia 1", "pie", df_nc, top_n=None)
+    agregar_hoja("Top 10 Clientes", "nombre cliente", "bar", df_nc)
+    agregar_hoja("Motivos", "referencia 1", "pie", df_nc)
     
-    # Filtro exacto ignorando espacios ("ERRORCARGA" y "ERROR DE CARGA" se agrupan juntos)
-    df_err = df_nc[df_nc['referencia 1'].astype(str).str.replace(' ', '').str.upper() == 'ERRORCARGA'] if not df_nc.empty and 'referencia 1' in df_nc.columns else pd.DataFrame()
-    if not df_err.empty: agregar_hoja("Error Carga", "cobrador cliente", "column", df_err, top_n=None)
+    df_err = df_nc[df_nc['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if not df_nc.empty and 'referencia 1' in df_nc.columns else pd.DataFrame()
+    if not df_err.empty: agregar_hoja("Error Carga", "cobrador cliente", "column", df_err)
 
     workbook.close()
     output.seek(0)
@@ -330,7 +327,6 @@ with tab_analisis:
                         df_new.columns = df_new.columns.str.lower().str.strip().str.replace('ú', 'u').str.replace('í', 'i').str.replace('ó', 'o').str.replace('á', 'a').str.replace('é', 'e')
                         df_new['fecha'] = pd.to_datetime(df_new['fecha'], errors='coerce')
                         df_new = df_new[df_new['fecha'] >= '2025-01-01']
-                        
                         if 'tipo' in df_new.columns:
                             tipos_nc_nd = ('C10', 'C11', 'C12', 'C14', 'C16', 'CA2', 'CA3', 'CA4', 'CA6', 'CA7', 'CA8', 'CA9', 'CAC', 'CAE', 'CB3', 'DA1', 'DA2', 'DA3', 'NC2', 'NC3', 'NC6', 'NC7', 'NC8', 'NCC')
                             mask_nc = df_new['tipo'].astype(str).str.strip().str.upper().str.startswith(tipos_nc_nd)
@@ -373,7 +369,7 @@ with tab_analisis:
             k1, k2, k3 = st.columns([1, 1, 2])
             with k1: st.markdown(tarjeta_kpi(f"NC Emitidas ({filtro_tiempo})", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi(f"Monto Total ({filtro_tiempo})", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
-            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado aplicando este filtro de tiempo.")
+            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado aplicando este filtro de tiempo. (El Dashboard principal muestra el panorama Anual general).")
         else:
             t_nc, t_c = d26_calc['nc'].sum(), d26_calc['cantidad'].sum()
             k1, k2, k3 = st.columns([1, 1, 2])
@@ -428,9 +424,8 @@ with tab_analisis:
 # --- SOLAPAS DE ANÁLISIS DETALLADO ---
 if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty:
     
-    def armar_seccion(df_crudo, col_agrupar, titulo, es_error=False, tipo_grafico="barras_h", top_n=None):
-        # Filtro agnóstico que elimina espacios y unifica ambos textos
-        if es_error: df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.replace(' ', '').str.upper() == 'ERRORCARGA'] if 'referencia 1' in df_crudo.columns else df_crudo
+    def armar_seccion(df_crudo, col_agrupar, titulo, es_error=False, tipo_grafico="barras_h"):
+        if es_error: df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if 'referencia 1' in df_crudo.columns else df_crudo
         
         if filtro_tiempo == "Todo el Año":
             st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo}</h2>", unsafe_allow_html=True)
@@ -441,10 +436,8 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
             if col_agrupar in df_trim.columns and not df_trim.empty:
                 ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
                 ag_trim['Total'] = ag_trim['Total'].abs()
-                ag_trim = ag_trim.sort_values('Cant', ascending=False)
-                if top_n: ag_trim = ag_trim.head(top_n)
-                ag_trim = ag_trim.reset_index(drop=True)
-                ag_trim['Color'] = [PALETA_COLORES[i % len(PALETA_COLORES)] for i in range(len(ag_trim))]
+                ag_trim = ag_trim.sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                ag_trim['Color'] = PALETA_COLORES[:len(ag_trim)]
                 cA, cB = st.columns([1.1, 1.3])
                 with cA: st.markdown(render_lista(ag_trim, df_trim, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
                 with cB: 
@@ -457,10 +450,8 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
             if col_agrupar in df_crudo.columns and not df_crudo.empty:
                 ag_acum = df_crudo.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
                 ag_acum['Total'] = ag_acum['Total'].abs()
-                ag_acum = ag_acum.sort_values('Cant', ascending=False)
-                if top_n: ag_acum = ag_acum.head(top_n)
-                ag_acum = ag_acum.reset_index(drop=True)
-                ag_acum['Color'] = [PALETA_COLORES[i % len(PALETA_COLORES)] for i in range(len(ag_acum))]
+                ag_acum = ag_acum.sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                ag_acum['Color'] = PALETA_COLORES[:len(ag_acum)]
                 cC, cD = st.columns([1.1, 1.3])
                 with cC: st.markdown(render_lista(ag_acum, df_crudo, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
                 with cD: 
@@ -472,10 +463,8 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
             if col_agrupar in df_filtrado.columns and not df_filtrado.empty:
                 ag_data = df_filtrado.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
                 ag_data['Total'] = ag_data['Total'].abs()
-                ag_data = ag_data.sort_values('Cant', ascending=False)
-                if top_n: ag_data = ag_data.head(top_n)
-                ag_data = ag_data.reset_index(drop=True)
-                ag_data['Color'] = [PALETA_COLORES[i % len(PALETA_COLORES)] for i in range(len(ag_data))]
+                ag_data = ag_data.sort_values('Cant', ascending=False).head(10).reset_index(drop=True)
+                ag_data['Color'] = PALETA_COLORES[:len(ag_data)]
                 cA, cB = st.columns([1.1, 1.3])
                 with cA: st.markdown(render_lista(ag_data, df_filtrado, col_agrupar, ['Cant', 'Total'], ranking=True, desglosar=True), unsafe_allow_html=True)
                 with cB: 
@@ -484,6 +473,6 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
                     else: st.altair_chart(grafico_barras_v(ag_data, col_agrupar, 'Cant'), use_container_width=True)
             else: st.info(f"No hay datos registrados en {filtro_tiempo}.")
 
-    with tab_top10: armar_seccion(st.session_state['d_nc26_raw'], 'nombre cliente', "Análisis Top 10 Clientes", tipo_grafico="barras_h", top_n=10)
-    with tab_motivo: armar_seccion(st.session_state['d_nc26_raw'], 'referencia 1', "Análisis de Motivos", tipo_grafico="torta", top_n=None)
-    with tab_error: armar_seccion(st.session_state['d_nc26_raw'], 'cobrador cliente', "Cobradores con Error de Carga", es_error=True, tipo_grafico="barras_v", top_n=None)
+    with tab_top10: armar_seccion(st.session_state['d_nc26_raw'], 'nombre cliente', "Análisis Top 10 Clientes", tipo_grafico="barras_h")
+    with tab_motivo: armar_seccion(st.session_state['d_nc26_raw'], 'referencia 1', "Análisis de Motivos", tipo_grafico="torta")
+    with tab_error: armar_seccion(st.session_state['d_nc26_raw'], 'cobrador cliente', "Análisis de Cobrador", es_error=True, tipo_grafico="barras_v")
