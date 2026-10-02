@@ -81,18 +81,25 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     ws_res.write(0, 0, "Resumen NC 2026", fmt_titulo)
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     
-    if not df_nc.empty and 'fecha' in df_nc.columns:
+    if not df_nc.empty and 'fecha' in df_nc.columns and 'total bruto origen' in df_nc.columns:
         df_nc['mes'] = pd.to_datetime(df_nc['fecha']).dt.month
         df_v['mes'] = pd.to_datetime(df_v['fecha']).dt.month
         
         v_m = df_v.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'Ventas'})
+        # Sumatoria directa (NC están positivas, ND están negativas), luego valor absoluto final
         nc_m = df_nc.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'Monto NC'})
         nc_c = df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'Cantidad'})
     else:
         v_m, nc_m, nc_c = pd.DataFrame(columns=['mes', 'Ventas']), pd.DataFrame(columns=['mes', 'Monto NC']), pd.DataFrame(columns=['mes', 'Cantidad'])
     
     calc = pd.DataFrame({'Mes_Num': range(1, 13), 'Mes': meses})
-    calc = calc.merge(v_m, left_on='Mes_Num', right_on='mes', how='left').merge(nc_m, left_on='Mes_Num', right_on='mes', how='left').merge(nc_c, left_on='Mes_Num', right_on='mes', how='left').fillna(0)
+    if not v_m.empty: calc = calc.merge(v_m, left_on='Mes_Num', right_on='mes', how='left')
+    else: calc['Ventas'] = 0
+    if not nc_m.empty: calc = calc.merge(nc_m, left_on='Mes_Num', right_on='mes', how='left')
+    else: calc['Monto NC'] = 0
+    if not nc_c.empty: calc = calc.merge(nc_c, left_on='Mes_Num', right_on='mes', how='left')
+    else: calc['Cantidad'] = 0
+    calc = calc.fillna(0)
     
     headers_res = ["Mes", "Cantidad", "Monto NC", "Ventas", "Días Hábiles"]
     for col, h in enumerate(headers_res): ws_res.write(2, col, h, fmt_header)
@@ -112,12 +119,12 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     ws_res.insert_chart('G3', chart_res)
         
     def agregar_hoja(nombre, col_agrupar, tipo_grafico, df_base, top_n=None):
-        if df_base.empty or col_agrupar not in df_base.columns: return
+        if df_base.empty or col_agrupar not in df_base.columns or 'total bruto origen' not in df_base.columns: return
         ws = workbook.add_worksheet(nombre)
         ws.write(0, 0, f"Análisis: {nombre}", fmt_titulo)
         
         ag = df_base.groupby(col_agrupar).agg(Cantidad=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
-        ag['Total'] = ag['Total'].abs()
+        ag['Total'] = ag['Total'].abs() # Valor neto final en absoluto
         ag = ag.sort_values('Cantidad', ascending=False)
         if top_n: ag = ag.head(top_n)
         ag = ag.reset_index(drop=True)
@@ -145,14 +152,14 @@ def generar_excel_avanzado(df_nc, df_v, df_nc25, df_v25, dias_habiles):
     agregar_hoja("Top 10 Clientes", "nombre cliente", "bar", df_nc, top_n=10)
     agregar_hoja("Motivos", "referencia 1", "pie", df_nc, top_n=None)
     
-    # Filtro exacto ignorando espacios ("ERRORCARGA" y "ERROR DE CARGA" se agrupan juntos)
-    df_err = df_nc[df_nc['referencia 1'].astype(str).str.replace(' ', '').str.upper() == 'ERRORCARGA'] if not df_nc.empty and 'referencia 1' in df_nc.columns else pd.DataFrame()
+    df_err = df_nc[df_nc['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA'] if not df_nc.empty and 'referencia 1' in df_nc.columns else pd.DataFrame()
     if not df_err.empty: agregar_hoja("Error Carga", "cobrador cliente", "column", df_err, top_n=None)
 
     workbook.close()
     output.seek(0)
     return output
 
+# --- FUNCIONES DE BASE DE DATOS (GOOGLE SHEETS) ---
 def conectar_google():
     if "gcp_service_account" not in st.secrets: return None, "Falta configurar credenciales."
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -170,7 +177,7 @@ def guardar_base_completa_en_sheets(dict_dfs):
             try: worksheet = sheet_doc.worksheet(nombre_hoja)
             except gspread.exceptions.WorksheetNotFound: worksheet = sheet_doc.add_worksheet(title=nombre_hoja, rows="100", cols="20")
             worksheet.clear()
-            worksheet.update([df_str.columns.values.tolist()] + df_str.astype(str).values.tolist())
+            if not df_str.empty: worksheet.update([df_str.columns.values.tolist()] + df_str.astype(str).values.tolist())
         return True, "Base de datos sincronizada en la nube."
     except Exception as e: return False, str(e)
 
@@ -183,7 +190,7 @@ def limpiar_historial_sheets():
                 worksheet = sheet_doc.worksheet(hoja)
                 worksheet.clear()
             except: pass
-        return True, "Historial borrado exitosamente. Ya puedes subir los archivos limpios."
+        return True, "Historial borrado exitosamente. Sube y guarda tus archivos limpios."
     except Exception as e: return False, str(e)
 
 def cargar_base_desde_sheets():
@@ -240,6 +247,7 @@ def render_lista(df_agrupado, df_crudo, col_titulo, cols_datos, ranking=False, d
             html += "<div class='detalle-contenido'><table class='tabla-interna'><tr><th>Fecha</th><th>Número</th><th>Cliente</th><th>Monto Bruto</th></tr>"
             for _, det_row in df_det.iterrows():
                 f_str = det_row['fecha'].strftime('%d/%m/%Y') if pd.notnull(det_row['fecha']) else ''
+                # Mostramos el valor bruto manteniendo el signo original para auditoría visual
                 html += f"<tr><td>{f_str}</td><td>{det_row.get('numero', '')}</td><td>{det_row.get('nombre cliente', '')}</td><td>$ {formato_arg(det_row.get('total bruto origen', 0))}</td></tr>"
             html += "</table></div></details>"
         else: html += "</div></div>"
@@ -291,22 +299,21 @@ with st.sidebar:
                     ex, msg = guardar_base_completa_en_sheets(dict_db)
                     if ex: st.success(msg)
                     else: st.error(msg)
-
+            
             if st.button("🗑️ Borrar Historial Nube (Reiniciar)"):
                 with st.spinner("Borrando..."):
                     ex, msg = limpiar_historial_sheets()
                     if ex:
                         st.session_state.pop('d_nc26_raw', None)
                         st.session_state.pop('d_nc25_raw', None)
-                        st.success("Historial borrado.")
-                        st.rerun()
+                        st.success("Historial borrado. Recarga la página.")
     
     st.markdown("---")
     if st.button("Cerrar Sesión"): st.session_state.rol = None; st.rerun()
 
 # --- APLICAR FILTRO ---
 def filtrar_df(df, filtro):
-    if filtro == "Todo el Año" or 'mes' not in df.columns: return df
+    if filtro == "Todo el Año" or df.empty or 'mes' not in df.columns: return df
     meses_map = {"Enero":1, "Febrero":2, "Marzo":3, "Abril":4, "Mayo":5, "Junio":6, "Julio":7, "Agosto":8, "Septiembre":9, "Octubre":10, "Noviembre":11, "Diciembre":12}
     if filtro.startswith("Q"): q = int(filtro[1]); return df[df['mes'].isin([q*3-2, q*3-1, q*3])]
     else: return df[df['mes'] == meses_map[filtro]]
@@ -344,6 +351,10 @@ with tab_analisis:
                     if f_nc:
                         df_new = pd.read_excel(f_nc, header=2)
                         df_new.columns = df_new.columns.str.lower().str.strip().str.replace('ú', 'u').str.replace('í', 'i').str.replace('ó', 'o').str.replace('á', 'a').str.replace('é', 'e')
+                        if 'tipo' in df_new.columns and 'total bruto origen' in df_new.columns:
+                            mask_nd = df_new['tipo'].astype(str).str.strip().str.upper().str.startswith(('DA', 'ND'))
+                            df_new['total bruto origen'] = df_new['total bruto origen'].abs()
+                            df_new.loc[mask_nd, 'total bruto origen'] = -df_new.loc[mask_nd, 'total bruto origen']
                         df_n_exist = pd.concat([df_n_exist, df_new]).drop_duplicates(subset=['numero'], keep='last')
                         
                     if f_h:
@@ -353,6 +364,13 @@ with tab_analisis:
                         df_new = df_new[df_new['fecha'] >= '2025-01-01']
                         
                         if 'tipo' in df_new.columns:
+                            # Ajustar signos ND para que resten
+                            if 'total bruto origen' in df_new.columns:
+                                mask_nd = df_new['tipo'].astype(str).str.strip().str.upper().str.startswith(('DA', 'ND'))
+                                df_new['total bruto origen'] = df_new['total bruto origen'].abs()
+                                df_new.loc[mask_nd, 'total bruto origen'] = -df_new.loc[mask_nd, 'total bruto origen']
+                            
+                            # Separar NC y Ventas usando la lista estricta
                             tipos_nc_nd = ('C10', 'C11', 'C12', 'C14', 'C16', 'CA2', 'CA3', 'CA4', 'CA6', 'CA7', 'CA8', 'CA9', 'CAC', 'CAE', 'CB3', 'DA1', 'DA2', 'DA3', 'NC2', 'NC3', 'NC6', 'NC7', 'NC8', 'NCC')
                             mask_nc = df_new['tipo'].astype(str).str.strip().str.upper().str.startswith(tipos_nc_nd)
                             df_nc25_exist = pd.concat([df_nc25_exist, df_new[mask_nc]]).drop_duplicates(subset=['numero'], keep='last')
@@ -375,14 +393,25 @@ with tab_analisis:
         d26_raw, d25_raw = st.session_state['d_nc26_raw'], st.session_state['d_nc25_raw']
         v26_raw, v25_raw = st.session_state['d_v26_raw'], st.session_state['d_v25_raw']
         
-        max_mes = int(d26_raw['mes'].max()) if not d26_raw.empty else 12
+        max_mes = int(d26_raw['mes'].max()) if not d26_raw.empty and 'mes' in d26_raw.columns else 12
         meses_activos = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][:max_mes]
 
         def calc_m(df_v, df_nc, max_m):
             c = pd.DataFrame({'mes': range(1, max_m+1)})
-            c = c.merge(df_v.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'ventas'}), on='mes', how='left')
-            c = c.merge(df_nc.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'nc'}), on='mes', how='left')
-            c = c.merge(df_nc.groupby('mes')['numero'].count().reset_index(), on='mes', how='left').rename(columns={'numero': 'cantidad'})
+            # Ventas 100% absolutas
+            if not df_v.empty and 'mes' in df_v.columns and 'total bruto origen' in df_v.columns:
+                c = c.merge(df_v.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'ventas'}), on='mes', how='left')
+            else: c['ventas'] = 0
+            
+            # NC se suman manteniendo sus signos (ND restan naturalmente), al final aplicamos valor absoluto
+            if not df_nc.empty and 'mes' in df_nc.columns and 'total bruto origen' in df_nc.columns:
+                c = c.merge(df_nc.groupby('mes')['total bruto origen'].sum().abs().reset_index().rename(columns={'total bruto origen': 'nc'}), on='mes', how='left')
+            else: c['nc'] = 0
+            
+            if not df_nc.empty and 'mes' in df_nc.columns and 'numero' in df_nc.columns:
+                c = c.merge(df_nc.groupby('mes')['numero'].count().reset_index().rename(columns={'numero': 'cantidad'}), on='mes', how='left')
+            else: c['cantidad'] = 0
+            
             return c.fillna(0)
             
         d26_calc, d25_calc = calc_m(v26_raw, d26_raw, max_mes), calc_m(v25_raw, d25_raw, max_mes)
@@ -390,11 +419,11 @@ with tab_analisis:
         st.markdown("<h1 style='font-size: 3.5rem; font-weight: 900; color: #1a202c; margin-top: 10px; margin-bottom: 10px;'>2026</h1>", unsafe_allow_html=True)
         
         if filtro_tiempo != "Todo el Año":
-            t_nc, t_c = abs(st.session_state['d_nc26']['total bruto origen'].sum()), st.session_state['d_nc26']['numero'].count()
+            t_nc, t_c = abs(st.session_state['d_nc26']['total bruto origen'].sum()) if 'total bruto origen' in st.session_state['d_nc26'].columns else 0, st.session_state['d_nc26']['numero'].count() if 'numero' in st.session_state['d_nc26'].columns else 0
             k1, k2, k3 = st.columns([1, 1, 2])
             with k1: st.markdown(tarjeta_kpi(f"NC Emitidas ({filtro_tiempo})", int(t_c)), unsafe_allow_html=True)
             with k2: st.markdown(tarjeta_kpi(f"Monto Total ({filtro_tiempo})", f"$ {formato_arg(t_nc)}"), unsafe_allow_html=True)
-            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado aplicando este filtro de tiempo. (El Dashboard principal muestra el panorama Anual general).")
+            with k3: st.info("💡 Cambia de solapa para ver el análisis detallado aplicando este filtro de tiempo.")
         else:
             t_nc, t_c = d26_calc['nc'].sum(), d26_calc['cantidad'].sum()
             k1, k2, k3 = st.columns([1, 1, 2])
@@ -450,18 +479,26 @@ with tab_analisis:
 if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty:
     
     def armar_seccion(df_crudo, col_agrupar, titulo, es_error=False, tipo_grafico="barras_h", top_n=None):
+        if df_crudo.empty:
+            st.info("No hay datos cargados para generar este análisis.")
+            return
+
         if es_error: 
-            # Filtrar si la columna existe. Permite "ERROR DE CARGA" en vez de romperse.
             if 'referencia 1' in df_crudo.columns:
-                df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.upper() == 'ERROR DE CARGA']
+                df_crudo = df_crudo[df_crudo['referencia 1'].astype(str).str.strip().str.upper() == 'ERROR DE CARGA']
+            else: df_crudo = pd.DataFrame()
         
+        if df_crudo.empty:
+            st.info(f"No hay registros que coincidan con los criterios en este periodo.")
+            return
+
         if filtro_tiempo == "Todo el Año":
             st.markdown(f"<br><h2 style='font-size: 2.2rem;'>{titulo}</h2>", unsafe_allow_html=True)
-            t_actual = (df_crudo['mes'].max() - 1) // 3 + 1 if not df_crudo.empty and 'mes' in df_crudo.columns else 1
-            df_trim = df_crudo[df_crudo['trimestre'] == t_actual] if not df_crudo.empty and 'trimestre' in df_crudo.columns else pd.DataFrame()
+            t_actual = (df_crudo['mes'].max() - 1) // 3 + 1 if 'mes' in df_crudo.columns else 1
+            df_trim = df_crudo[df_crudo['trimestre'] == t_actual] if 'trimestre' in df_crudo.columns else pd.DataFrame()
             
             st.markdown(f"<h2>📅 Trimestre Actual (Q{int(t_actual)})</h2>", unsafe_allow_html=True)
-            if col_agrupar in df_trim.columns and not df_trim.empty:
+            if col_agrupar in df_trim.columns and not df_trim.empty and 'total bruto origen' in df_trim.columns:
                 ag_trim = df_trim.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
                 ag_trim['Total'] = ag_trim['Total'].abs()
                 ag_trim = ag_trim.sort_values('Cant', ascending=False)
@@ -477,7 +514,7 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
             else: st.info("No hay datos para este trimestre.")
 
             st.markdown("<br><h2>📈 Acumulado Anual 2026</h2>", unsafe_allow_html=True)
-            if col_agrupar in df_crudo.columns and not df_crudo.empty:
+            if col_agrupar in df_crudo.columns and not df_crudo.empty and 'total bruto origen' in df_crudo.columns:
                 ag_acum = df_crudo.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
                 ag_acum['Total'] = ag_acum['Total'].abs()
                 ag_acum = ag_acum.sort_values('Cant', ascending=False)
@@ -492,7 +529,7 @@ if 'd_nc26_raw' in st.session_state and not st.session_state['d_nc26_raw'].empty
                     else: st.altair_chart(grafico_barras_v(ag_acum, col_agrupar, 'Cant'), use_container_width=True)
         else:
             df_filtrado = filtrar_df(df_crudo, filtro_tiempo)
-            if col_agrupar in df_filtrado.columns and not df_filtrado.empty:
+            if col_agrupar in df_filtrado.columns and not df_filtrado.empty and 'total bruto origen' in df_filtrado.columns:
                 ag_data = df_filtrado.groupby(col_agrupar).agg(Cant=('numero', 'count'), Total=('total bruto origen', 'sum')).reset_index()
                 ag_data['Total'] = ag_data['Total'].abs()
                 ag_data = ag_data.sort_values('Cant', ascending=False)
